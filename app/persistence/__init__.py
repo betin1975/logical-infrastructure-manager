@@ -12,6 +12,7 @@ from .errors import (
     RestoreValidationError,
     TransactionError,
 )
+from .inventory_repository import SQLiteInventoryRepository
 from .migrations import (
     INTERNAL_MIGRATIONS,
     MIGRATION_TABLE,
@@ -44,6 +45,7 @@ __all__ = [
     "Repository",
     "RestoreValidationError",
     "RestoreValidationResult",
+    "SQLiteInventoryRepository",
     "TransactionError",
     "TransactionManager",
 ]

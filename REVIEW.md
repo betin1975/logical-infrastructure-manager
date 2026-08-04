@@ -2,24 +2,29 @@
 
 This document records the completed self-review of all changes currently made on
 this branch, including the Configuration Manager, Runtime Manager, Logging
-Foundation, and Persistence Foundation. The review covers architecture, security,
-maintainability, tests, Docker and Git practices, remaining technical debt, and
-release readiness.
+Foundation, Persistence Foundation, and Inventory Domain Foundation. The review
+covers architecture, security, maintainability, tests, Docker and Git practices,
+remaining technical debt, and release readiness.
 
 This branch establishes the Logical Infrastructure Manager (LIM) project
 foundation. It adds permanent engineering guidance, a target architecture,
 layered configuration, Python quality tooling, tests, container definitions,
-security and lifecycle documentation, and focused Git exclusions. It deliberately
-does not implement inventory, SSH, plugin, job-engine, or user-interface business
-features.
+security and lifecycle documentation, and focused Git exclusions. It implements
+the authoritative server inventory while deliberately excluding SSH, polling,
+plugins, jobs, scheduling, and user-interface features.
 
 Runtime lifecycle management and centralized logging are now implemented. Logging
 uses configuration-driven console and rotating-file handlers, structured context,
 UTC timestamps, atomic reconfiguration, and centralized secret redaction.
 SQLite persistence now provides operation-scoped connections, explicit nested
 transactions, ordered migrations, injected repository contracts, consistent
-backups, and non-destructive restore validation without introducing business
-tables.
+backups, and non-destructive restore validation. Schema version 2 introduces only
+the normalized server inventory tables approved by Issue #5.
+Domain persistence is now explicitly repository-only: business logic,
+`SSHManager`, plugins, and jobs may not import SQLite, execute SQL, construct
+repositories, or access low-level persistence managers.
+The SQL-free `InventoryService` is the sole mutation gateway for immutable server,
+tag, label, lifecycle, health, discovery, poll, and synchronization state.
 
 The architectural direction is appropriate for an early-stage infrastructure
 manager: a modular monolith, inward dependency flow, SQLite as the authoritative
@@ -57,6 +62,12 @@ version-enforcement, and documentation concerns remain.
 - `app/persistence/` owns database policy, operation-scoped connections,
   transactions, migrations, repository contracts, backup, restore validation,
   and persistence-specific errors.
+- `app/inventory/` owns immutable domain models, pure validation, inventory
+  exceptions, the repository protocol, and SQL-free `InventoryService`.
+- `app/persistence/inventory_schema.py` defines schema version 2 and its documented
+  normalized indexes.
+- `app/persistence/inventory_repository.py` is the sole concrete inventory SQL
+  implementation.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -74,6 +85,13 @@ version-enforcement, and documentation concerns remain.
 - `tests/test_persistence.py` verifies SQLite policies, file security,
   transactions, savepoints, migrations, repository injection, backups, restore
   validation, startup, WAL behavior, readers, and writer contention.
+- `tests/test_architecture.py` enforces the repository boundary by rejecting
+  SQLite imports and low-level persistence-manager imports outside the persistence
+  package and composition roots.
+- `tests/test_inventory_domain.py`, `tests/test_inventory_repository.py`, and
+  `tests/test_inventory_service.py` verify model invariants, validation, schema,
+  indexes, filters, search, pagination, rollback, soft deletion, optimistic
+  conflicts, service transitions, dependency injection, and safe logging.
 
 ## Modified
 
@@ -129,6 +147,52 @@ version-enforcement, and documentation concerns remain.
   independently, while its schema change and history record are atomic.
 - Backup uses SQLite's online API, validates before publication, and never infers
   permission to replace the active authoritative database.
+- Business logic depends only on repository interfaces. `SSHManager`, plugins,
+  and jobs are forbidden from executing SQL, while concrete repository
+  construction remains a composition-root responsibility.
+- Inventory models are frozen values, state uses enums, and all transitions
+  construct a complete validated replacement rather than mutating accepted state.
+- Addresses, tags, and labels are normalized relationally. Cross-kind address
+  uniqueness prevents a management address from silently colliding with another
+  server's primary address.
+- Optimistic `inventory_version` checks prevent stale service or repository
+  updates from overwriting newer accepted inventory.
+
+## Inventory domain self-review
+
+- **Domain model:** `Server` includes every approved identity, platform,
+  operating-system, classification, policy, lifecycle, poll, timestamp,
+  synchronization, version, tag, label, and note field. Frozen dataclasses and
+  enums prevent partial mutation and magic state strings.
+- **Normalization:** Servers, addresses, tags, server/tag relationships, and
+  labels are separate tables. No inventory JSON blob exists. Foreign keys cascade
+  only normalized children and are enforced on every connection.
+- **Indexes:** Unique hostname and address indexes enforce identity. Partial
+  enabled, managed, and health indexes serve target filters; status, address,
+  reverse-tag, and label indexes serve documented lifecycle and lookup paths.
+- **Repository API:** The domain owns `InventoryRepository`; only
+  `SQLiteInventoryRepository` receives persistence dependencies. Values are
+  parameterized, pages are bounded, reads hydrate immutable aggregates, and every
+  mutation is transactional.
+- **Service boundary:** Registration and all lifecycle, discovery, health, poll,
+  failure, tag, label, delete, and restore mutations pass through
+  `InventoryService`. Generic updates are limited to descriptive/configuration
+  fields and cannot bypass dedicated state transitions.
+- **Soft delete:** Deleted rows remain disabled and hidden by default while UUID,
+  hostname, and addresses stay reserved. Restore is explicit and returns the
+  server disabled. There is no hard-delete path.
+- **Security:** Inventory SQL never leaves the persistence package. Search input
+  and all values are parameterized. Logs contain UUID, hostname, and operation
+  only—not addresses, descriptions, labels, notes, or SQL parameters.
+- **Scalability:** Pages are capped at 1,000 and tag/label hydration is batched per
+  page. SQLite remains single-writer; substring search is intentionally simple
+  until measured scale justifies FTS.
+
+The review found and fixed missing database enum checks, permissive tag/label
+coercion, incomplete poll timestamp invariants, overly broad generic service
+updates, version churn on idempotent operations, double-clock poll transitions,
+and insufficient `created_at` defense in the concrete repository. No blocking
+inventory defect remains.
 
 ## Persistence foundation self-review
 
@@ -278,7 +342,13 @@ explicit cause is retained and exception context is suppressed.
 
 ## Inventory and persistence
 
-- Approve inventory use cases and a normalized SQLite schema.
+- Define logical-resource relationships, connections, provider identity,
+  provenance, merge/conflict policy, and ownership before extending schema 2.
+- Define bulk service/repository operations and conflict-retry policy before
+  high-volume discovery or polling.
+- Establish inventory history, retention, and an explicitly authorized purge
+  process; soft deletion currently retains identities indefinitely.
+- Measure substring-search behavior and adopt SQLite FTS only when justified.
 - Define backup scheduling, retention, quotas, off-host copies, and alerting.
 - Design destructive restore orchestration with shutdown coordination, operator
   confirmation, rollback, and end-to-end recovery tests.
@@ -321,11 +391,11 @@ explicit cause is retained and exception context is suppressed.
 The implemented suite was run against CPython 3.12.13 with these results:
 
 ```text
-125 tests passed
-91.00% branch-aware coverage
+184 tests passed
+91.46% branch-aware coverage
 Ruff passed
 Python compilation passed
-Configuration, runtime, logging, persistence, startup, and concurrency tests passed
+Configuration, runtime, logging, persistence, inventory, startup, and concurrency tests passed
 Compose YAML structural parsing passed
 git diff --check passed
 ```
@@ -360,6 +430,12 @@ also show plain `python -m pytest`, which does not enforce coverage.
 - Restore validation against adversarial SQLite files beyond synthetic corruption
   and malformed migration metadata.
 - Container persistence behavior on Linux bind mounts and named volumes.
+- Multi-process optimistic inventory update races and conflict retry behavior.
+- Inventory search/load performance at representative maximum server, tag, and
+  label cardinalities.
+- An explicit internationalized-hostname policy; current validation accepts only
+  normalized ASCII hostnames.
+- Property-based state-transition and repository round-trip testing.
 
 # Remaining TODOs
 
@@ -387,7 +463,7 @@ also show plain `python -m pytest`, which does not enforce coverage.
 2. Add CI, container builds, type checking, dependency auditing, and secret
     scanning.
 3. Add licensing and contributor-governance files.
-4. Implement inventory tables, SSHManager, plugins, jobs, bootstrap, and
+4. Implement inventory relationships, SSHManager, plugins, jobs, bootstrap, and
    interfaces only after their designs are approved.
 
 # Overall Assessment
@@ -409,9 +485,22 @@ rollover and no-follow hardening.
 Persistence is likewise configuration-driven and standard-library only. It keeps
 connections and transactions operation-scoped, enforces SQLite policy centrally,
 fails closed on invalid migration state, uses consistent atomic backups, and
-limits restore support to read-only validation. No domain tables or speculative
-CRUD framework were introduced. No blocking database or security issue remains
+limits restore support to read-only validation. The only domain tables are the
+approved normalized inventory schema; no generic CRUD framework was introduced.
+No blocking database or security issue remains
 after the persistence self-review and hardening changes described above.
+
+The Inventory Domain follows the repository-only boundary: immutable models and
+`InventoryService` contain business rules, the repository protocol belongs to the
+domain, and SQLite implementation details remain in `app.persistence`. The schema
+is normalized, indexed for implemented queries, foreign-key protected, soft-delete
+safe, and optimistic-concurrency aware. No SSH, polling, plugin, job, API, UI, or
+authorization behavior was added.
+
+The repository-only persistence rule is documented in engineering policy,
+architecture, ADR-0006, repository contracts, and README guidance. An automated
+AST boundary test prevents direct SQLite or low-level persistence-manager imports
+from entering future business, SSH, plugin, or job modules.
 
 The original blocking findings are resolved. Runtime inventory, job, log, and
 backup artifacts are recursively excluded from Git, and malformed environment

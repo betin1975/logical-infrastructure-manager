@@ -5,7 +5,6 @@ import sqlite3
 import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,7 +12,6 @@ from typing import Any
 import pytest
 
 import app.__main__ as app_main
-from app.config import ConfigurationManager
 from app.persistence import (
     INTERNAL_MIGRATIONS,
     MIGRATION_TABLE,
@@ -31,74 +29,15 @@ from app.persistence import (
     Repository,
     RestoreValidationError,
     TransactionError,
-    TransactionManager,
 )
-from app.runtime import RuntimeManager
-from tests.helpers import write_yaml
+from tests.helpers import (
+    create_persistence_stack,
+    migrate_database,
+)
 
-
-@dataclass(frozen=True)
-class PersistenceStack:
-    config: ConfigurationManager
-    runtime: RuntimeManager
-    database: DatabaseManager
-    transactions: TransactionManager
-
-
-def create_stack(
-    tmp_path: Path,
-    overrides: dict[str, Any] | None = None,
-    *,
-    initialize_runtime: bool = True,
-    initialize_database: bool = True,
-) -> PersistenceStack:
-    database_config: dict[str, Any] = {
-        "filename": "lim.sqlite3",
-        "foreign_keys": True,
-        "busy_timeout_ms": 100,
-        "connection_timeout_seconds": 0.1,
-        "journal_mode": "WAL",
-        "synchronous_mode": "NORMAL",
-        "row_factory": "row",
-        "transaction_mode": "DEFERRED",
-        "check_same_thread": True,
-        "backup_prefix": "lim-backup",
-    }
-    if overrides:
-        database_config.update(overrides)
-    default = tmp_path / "config/default.yml"
-    write_yaml(
-        default,
-        {
-            "paths": {
-                "runtime": str(tmp_path / "runtime"),
-                "data": str(tmp_path / "runtime/data"),
-                "jobs": str(tmp_path / "runtime/jobs"),
-                "logs": str(tmp_path / "runtime/logs"),
-                "backups": str(tmp_path / "runtime/backups"),
-            },
-            "logging": {"level": "INFO"},
-            "database": database_config,
-        },
-    )
-    config = ConfigurationManager(default, tmp_path / "config/local.yml", environ={})
-    runtime = RuntimeManager(config, application_root=tmp_path)
-    if initialize_runtime:
-        runtime.initialize()
-    database = DatabaseManager(config, runtime)
-    if initialize_database:
-        database.initialize()
-    return PersistenceStack(config, runtime, database, TransactionManager(database))
-
-
-def migrate(stack: PersistenceStack) -> MigrationManager:
-    manager = MigrationManager(
-        stack.database,
-        stack.transactions,
-        clock=lambda: datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
-    )
-    manager.apply_pending()
-    return manager
+create_stack = create_persistence_stack
+migrate = migrate_database
+LATEST_SCHEMA_VERSION = INTERNAL_MIGRATIONS[-1].version
 
 
 def test_database_creation_and_restrictive_permissions(tmp_path: Path) -> None:
@@ -317,10 +256,11 @@ def test_initial_migration_and_idempotent_history(tmp_path: Path) -> None:
     second = manager.apply_pending()
 
     assert first == second
-    assert first.schema_version == 1
+    assert first.schema_version == LATEST_SCHEMA_VERSION
     assert first.metadata_exists
     assert [(item.version, item.name) for item in first.history] == [
-        (1, "create_migration_metadata")
+        (1, "create_migration_metadata"),
+        (2, "create_inventory_schema"),
     ]
 
 
@@ -440,10 +380,10 @@ def test_backup_is_consistent_restrictive_and_reports_schema(tmp_path: Path) -> 
     assert result.path == stack.runtime.paths.backups / "foundation.sqlite3"
     assert result.size_bytes > 0
     assert result.created_at == fixed_time
-    assert result.schema_version == 1
+    assert result.schema_version == LATEST_SCHEMA_VERSION
     assert stat.S_IMODE(result.path.stat().st_mode) == 0o600
     validation = backup.validate_restore(result.path)
-    assert validation.schema_version == 1
+    assert validation.schema_version == LATEST_SCHEMA_VERSION
     assert validation.size_bytes == result.size_bytes
 
 
@@ -457,7 +397,7 @@ def test_backup_succeeds_while_source_connection_is_open(tmp_path: Path) -> None
         result = backup.create_backup("open-source.sqlite3")
         after = source.execute(f"SELECT COUNT(*) FROM {MIGRATION_TABLE}").fetchone()[0]
 
-    assert before == after == 1
+    assert before == after == LATEST_SCHEMA_VERSION
     assert result.path.is_file()
 
 
@@ -648,15 +588,15 @@ def test_application_startup_creates_migrated_database_idempotently(
 
     database = DatabaseManager(stack.config, stack.runtime)
     database.initialize()
-    assert MigrationManager(database).schema_version() == 1
+    assert MigrationManager(database).schema_version() == LATEST_SCHEMA_VERSION
     assert log_events == [
         (
             "LIM startup foundation initialized with schema_version=%d",
-            (1,),
+            (LATEST_SCHEMA_VERSION,),
         ),
         (
             "LIM startup foundation initialized with schema_version=%d",
-            (1,),
+            (LATEST_SCHEMA_VERSION,),
         ),
     ]
     assert all("sqlite" not in message.lower() for message, _args in log_events)

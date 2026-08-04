@@ -3,7 +3,9 @@
 LIM has not released a stable application or domain schema, so no supported
 production upgrade path exists yet. The persistence foundation now applies
 ordered internal migrations automatically during `python -m app`; the only
-current migration creates LIM's migration-history table.
+current migrations create LIM's migration-history metadata and normalized server
+inventory schema. They do not create SSH, job, plugin, user, alert, or audit
+tables.
 
 Before the first release, the project must define:
 

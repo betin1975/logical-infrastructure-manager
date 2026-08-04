@@ -28,6 +28,17 @@ after its first release.
   schema-version checks.
 - Architecture decision records for persistence authority, connection lifecycle,
   migrations, backup, and deferred destructive restore.
+- Enforced the repository-only domain persistence boundary for business logic,
+  `SSHManager`, plugins, and jobs.
+- Immutable authoritative server inventory with typed platform, operating-system,
+  lifecycle, discovery, health, and synchronization states.
+- SQL-free `InventoryService` and repository interface covering registration,
+  updates, lifecycle, polling outcomes, failures, tags, and labels.
+- Schema version 2 with normalized servers, globally unique addresses, tags,
+  server/tag relationships, labels, documented indexes, soft deletion, and
+  optimistic inventory versions.
+- SQLite inventory repository with search, pagination, filters, duplicate defense,
+  transaction rollback, and infrastructure-error translation.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.

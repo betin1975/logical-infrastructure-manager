@@ -3,9 +3,9 @@
 ## Status and intent
 
 This document defines the target architecture and the boundaries new code must
-respect. LIM is currently a foundation: configuration, runtime, logging, and
-SQLite persistence infrastructure exist, while inventory repositories, SSH,
-plugins, and the job engine remain planned.
+respect. LIM is currently a foundation: configuration, runtime, logging, SQLite
+persistence, and authoritative server inventory exist, while SSH, plugins,
+polling, and the job engine remain planned.
 The architecture is intentionally explicit before those business capabilities
 are implemented.
 
@@ -30,6 +30,13 @@ entry points -> bootstrap -> application services -> domain
 The domain must not import transport, SQLite, SSH libraries, Docker APIs, or
 vendor plugins. Infrastructure implements interfaces owned by its consumers.
 
+All domain-state persistence crosses repository interfaces. Business logic never
+imports SQLite, executes SQL, or receives a raw connection. Only repository
+implementations execute domain SQL. `SSHManager`, plugins, and jobs consume
+injected repository interfaces and must never access `DatabaseManager` or execute
+SQL. Migration, transaction, backup, and database-policy components may execute
+their narrowly scoped internal SQLite operations, but cannot persist domain state.
+
 ## Modules
 
 The current `app.config` module remains a supported public import. New modules
@@ -40,6 +47,7 @@ app/
   config.py              Layered configuration (implemented)
   runtime.py             Runtime path lifecycle (implemented)
   logging_manager.py     Central logging and redaction (implemented)
+  inventory/             Immutable model, repository protocol, service
   persistence/           SQLite policy, transactions, migrations, backups
   bootstrap.py           Composition root and lifecycle (planned)
   domain/                Entities, value objects, invariants, domain errors
@@ -118,6 +126,8 @@ exception. Nested scopes use uniquely named savepoints. SQLite authorization
 rejects transaction-control statements from repository code, preventing hidden
 commits. Repositories receive the active connection and contain explicit,
 parameterized domain SQL; there is deliberately no generic CRUD framework.
+Application services depend on repository interfaces rather than concrete SQLite
+repositories, connections, or `DatabaseManager`.
 
 Migrations are consecutively versioned Python records. Every migration runs and
 records its history in one transaction, while separate migrations commit
@@ -132,15 +142,61 @@ file read-only, runs `PRAGMA integrity_check`, validates migration metadata, and
 reports the schema version. It never replaces the active database. Scheduling,
 retention, off-host copies, and destructive restore orchestration are deferred.
 
-Inventory entities are expected to include logical resources, connections,
-provider identity, observed state, desired metadata, and audit timestamps. Their
-schema is intentionally deferred until use cases are approved.
+The inventory domain is implemented in `app.inventory` without importing SQLite.
+`Server` is an immutable aggregate containing stable UUID and hostname identity,
+primary and optional management addresses, platform and operating-system facts,
+classification, enabled and managed policy, discovery and health state, poll and
+bootstrap timestamps, soft deletion, synchronization state, optimistic
+`inventory_version`, tags, labels, and operator notes. `Tag` and `Label` are
+immutable normalized value objects; all state categories use enums.
+
+`InventoryService` is the only business mutation gateway. It registers and
+updates servers, controls enabled and lifecycle states, records discovery,
+health, and polling outcomes, maintains failures, tags, and labels, and performs
+soft delete and restore. It depends only on `InventoryRepository` and a contextual
+logger. Future SSH, plugin, polling, and job code must call this service or other
+approved application services rather than repositories directly.
+
+Schema version 2 adds only normalized inventory tables:
+
+- `inventory_servers` owns the server aggregate, state, timestamps, and optimistic
+  version. Case-insensitive hostname uniqueness reserves identity across deletion.
+- `inventory_server_addresses` stores primary and management addresses. Its
+  address primary key enforces global cross-kind uniqueness.
+- `inventory_tags` stores case-insensitive tag identities.
+- `inventory_server_tags` owns the many-to-many server/tag relationship.
+- `inventory_server_labels` stores unique per-server key/value labels.
+
+`SQLiteInventoryRepository` is the sole inventory SQL implementation. Every
+method owns one explicit transaction, uses parameters for values, hydrates domain
+objects before returning, and translates infrastructure failures into inventory
+exceptions. Updates compare the previous `inventory_version`; stale writes fail.
+Soft deletion is non-destructive and continues reserving hostname and addresses,
+making restoration deterministic.
+
+Inventory indexes are intentional and covered by migration tests:
+
+- SQLite's hostname unique index supports identity lookup and duplicate defense.
+- The address primary key supports address lookup and cross-kind uniqueness.
+- `idx_inventory_servers_enabled` supports active-operation selection.
+- `idx_inventory_servers_managed` supports managed-target selection.
+- `idx_inventory_servers_health` supports health-state lookup.
+- `idx_inventory_servers_status` supports lifecycle and deleted-state operations.
+- `idx_inventory_addresses_server` supports aggregate address hydration.
+- `idx_inventory_server_tags_tag` supports reverse tag lookup.
+- `idx_inventory_labels_key_value` supports label-based inventory lookup.
+
+Search currently uses bounded, parameterized substring matching across hostname,
+display name, environment, location, addresses, tags, and labels. FTS is deferred
+until measured inventory size and query requirements justify it.
 
 ## SSH
 
 `SSHManager` will be the only implementation allowed to create SSH connections,
 execute remote commands, or transfer files. Jobs and plugins request remote
 operations through its interface and never import an SSH library directly.
+`SSHManager` receives application-facing services when persistence is needed; it
+never imports SQLite, accesses `DatabaseManager`, or executes SQL.
 
 The manager will own:
 
@@ -169,9 +225,10 @@ versions.
 
 Dependencies are injected. A plugin receives narrowly scoped inventory services,
 an `SSHManager` interface when remote access is required, and a logger. It must
-not open SQLite, load global configuration, read credentials directly, or create
-its own SSH client. Plugin failures are isolated and translated into structured
-results without corrupting inventory or worker state.
+not open SQLite, execute SQL, construct repositories, load global configuration,
+read credentials directly, or create its own SSH client. Plugin failures are
+isolated and translated into structured results without corrupting inventory or
+worker state.
 
 ## Job engine
 
@@ -189,6 +246,9 @@ the database. A process crash must not silently lose or duplicate accepted work.
 The initial implementation should favor an in-process bounded worker pool backed
 by SQLite. External brokers are not justified until measured requirements demand
 them.
+
+Job handlers receive repository interfaces or application services. They never
+import SQLite, execute SQL, construct repositories, or access `DatabaseManager`.
 
 ## Runtime and backups
 
@@ -271,9 +331,11 @@ No directories are moved now, avoiding speculative churn and import breakage.
 The following work is recommended but intentionally not implemented as business
 functionality in this foundation change:
 
-1. Define approved inventory use cases and a normalized SQLite schema.
-2. Design the first domain repository interfaces and inventory migrations only
-   after inventory use cases and retention requirements are approved.
+1. Define inventory relationships beyond servers, including logical resources,
+   connections, provider identity, and ownership, before extending schema version
+   2.
+2. Define inventory history, provenance, merge/conflict policy, bulk operations,
+   retention, and approved purge behavior before automated discovery is added.
 3. Define production backup scheduling, retention, quotas, off-host copies, and
    destructive restore orchestration with operator confirmation and rollback.
 4. Design and implement the sole `SSHManager`, including host-key policy,

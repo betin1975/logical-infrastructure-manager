@@ -10,8 +10,11 @@ from typing import Protocol, runtime_checkable
 class Repository(Protocol):
     """Contract for repositories bound to an injected managed transaction.
 
-    Repositories execute parameterized SQL through ``connection``. They never
-    construct a ``DatabaseManager`` and never commit, roll back, or migrate.
+    Repositories are the only classes allowed to read or persist domain state.
+    They execute parameterized SQL through ``connection`` and never construct a
+    ``DatabaseManager`` or commit, roll back, or migrate. Business logic,
+    ``SSHManager``, plugins, and jobs depend on repository interfaces and never
+    import SQLite or execute SQL.
     """
 
     connection: sqlite3.Connection

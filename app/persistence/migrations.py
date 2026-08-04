@@ -56,9 +56,18 @@ def _create_migration_metadata(connection: sqlite3.Connection) -> None:
     )
 
 
-INTERNAL_MIGRATIONS = (
-    Migration(1, "create_migration_metadata", _create_migration_metadata),
-)
+def _internal_migrations() -> tuple[Migration, ...]:
+    # Import after Migration is defined so the inventory schema can reuse it
+    # without introducing a cycle at module import time.
+    from .inventory_schema import INVENTORY_MIGRATION
+
+    return (
+        Migration(1, "create_migration_metadata", _create_migration_metadata),
+        INVENTORY_MIGRATION,
+    )
+
+
+INTERNAL_MIGRATIONS = _internal_migrations()
 
 
 class MigrationManager:

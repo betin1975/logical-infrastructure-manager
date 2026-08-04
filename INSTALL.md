@@ -45,6 +45,11 @@ Database and backup files use mode `0600`. Back up through the Python
 file directly. Restore validation does not replace the active database. Production
 retention, restore orchestration, and disaster-recovery procedures remain pending.
 
+Schema version 2 creates the normalized authoritative inventory tables for
+servers, addresses, tags, server/tag relationships, and labels. Startup does not
+insert inventory records. Application code must use `InventoryService`; direct
+SQL, manual database edits, and destructive deletion are unsupported.
+
 ## Docker
 
 Docker Compose currently builds a one-shot foundation initialization image:

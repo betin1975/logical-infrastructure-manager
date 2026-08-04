@@ -25,8 +25,12 @@ not been approved and documented.
 - `SSHManager` is the only SSH implementation. All SSH sessions, commands, file
   transfers, host-key checks, timeouts, and authentication must pass through it.
   Plugins and jobs must never instantiate SSH clients or invoke `ssh` directly.
-- Access SQLite through repositories and explicit transactions. UI, API, plugin,
-  and job code must not issue ad hoc SQL.
+- Business logic must never communicate directly with SQLite. All domain-state
+  persistence passes through repository interfaces, and only repository classes
+  may read or persist domain state.
+- `SSHManager`, plugins, jobs, UI, API, and application services must never import
+  SQLite, execute SQL, construct repositories, or access `DatabaseManager`
+  directly. Bootstrap injects repository interfaces into their consumers.
 - Keep plugins behind a versioned plugin contract. Plugins may translate vendor
   behavior, but must not own orchestration, credentials, or authoritative state.
 - Bootstrap constructs the dependency graph. Prefer dependency injection over
@@ -141,6 +145,11 @@ public objects.
   operation-scoped, never global or shared across unrelated work.
 - `TransactionManager` exclusively owns transaction control. Repositories receive
   the active connection through injection and never commit or roll back.
+- Only repository implementations execute domain SQL. Business logic depends on
+  repository interfaces and remains independent of SQLite and schema details.
+- Database policy, migrations, backup, and restore-validation infrastructure may
+  execute only the internal SQLite operations required by those responsibilities;
+  they must never become an alternate path for persisting domain state.
 - Schema changes require ordered, transactional migrations and rollback or
   recovery guidance. Run them through `MigrationManager`; repositories never
   migrate. Never edit deployed database files manually.
@@ -153,6 +162,24 @@ public objects.
   validation is read-only; destructive replacement requires a future approved
   design and must never be inferred from validation success.
 - Never put database files in Git, images, logs, or bug reports.
+
+## Inventory domain
+
+- `Server`, `Tag`, `Label`, and inventory state values are immutable domain
+  objects. Add behavior through validated transitions, never by mutating fields.
+- `InventoryService` is the only business mutation gateway. SSH, plugins, jobs,
+  and interfaces call it; they do not write through repositories directly.
+- Consumers depend on `InventoryRepository`. Only the concrete repository under
+  `app.persistence` receives `DatabaseManager` and `TransactionManager` or
+  executes inventory SQL.
+- Preserve soft-deleted servers, hostnames, and addresses until an approved
+  retention process exists. Never add a hard-delete shortcut.
+- Use `inventory_version` for optimistic concurrency. A stale update fails rather
+  than overwriting a newer accepted state.
+- Keep addresses, tags, and labels normalized. Do not replace relational
+  inventory state with JSON blobs for convenience.
+- Store inventory timestamps as timezone-aware UTC values and use enums instead
+  of magic state strings.
 
 ## SSH and remote execution
 

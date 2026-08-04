@@ -5,13 +5,15 @@ an authoritative infrastructure inventory and safely coordinating inspection and
 automation through controlled SSH access, durable jobs, and provider plugins.
 
 > **Project status:** foundation development. Configuration, runtime, centralized
-> logging, and SQLite persistence infrastructure are implemented and tested.
-> Inventory tables, SSH, plugins, jobs, and user-facing interfaces remain planned;
-> they are not production features yet.
+> logging, SQLite persistence, and the authoritative server inventory domain are
+> implemented and tested. SSH, plugins, polling, jobs, and user-facing interfaces
+> remain planned; they are not production features yet.
 
 ## Design principles
 
 - SQLite is the authoritative inventory.
+- Business logic reaches persistence only through injected repository interfaces;
+  SSH, plugins, and jobs never execute SQL.
 - `SSHManager` will be the only SSH implementation.
 - Plugins adapt providers but do not own inventory, credentials, or orchestration.
 - Bootstrap constructs dependencies; components prefer dependency injection.
@@ -154,29 +156,55 @@ and returns short-lived connections with foreign keys enabled, a 5-second busy
 timeout, WAL journaling, `NORMAL` synchronization, `sqlite3.Row` access, deferred
 explicit transactions, and same-thread enforcement.
 
-Application operations use `TransactionManager`:
-
-```python
-from app.persistence import BaseRepository
-
-with transaction_manager.transaction() as connection:
-    repository = BaseRepository(connection)
-    # A domain repository would execute parameterized SQL here.
-```
-
-The manager commits successful scopes, rolls back failures, and maps nested
-scopes to savepoints. Repositories receive a connection; they do not construct a
-database manager, control transactions, or run migrations.
+Concrete repository implementations use `TransactionManager`, which commits
+successful scopes, rolls back failures, and maps nested scopes to savepoints.
+Business and interface code never receives its connection. Repositories do not
+commit, roll back, or run migrations themselves.
+Only repository implementations may execute domain SQL. Business logic,
+`SSHManager`, plugins, and jobs depend on repository interfaces and never receive
+raw SQLite connections.
 
 Startup applies ordered internal Python migrations and logs only the resulting
-schema version. The initial migration creates `lim_schema_migrations` and no
-inventory, server, job, user, plugin, alert, or audit tables.
+schema version. Migration 1 creates `lim_schema_migrations`; migration 2 creates
+only normalized inventory tables. No job, user, plugin, alert, SSH, or audit table
+exists.
 
 `BackupManager` uses SQLite's online backup API and atomically publishes mode
 `0600` files under `runtime/backups`. Restore validation is deliberately
 non-destructive: it opens a contained candidate read-only, runs SQLite integrity
 validation, verifies migration metadata, and reports its schema version. Backup
 retention and active-database replacement are not implemented.
+
+## Inventory domain
+
+`app.inventory` defines the authoritative, SQLite-independent infrastructure
+model. `Server`, `Tag`, and `Label` are immutable. Server state uses enums for
+platform, operating-system family, server type, administrative status, discovery,
+health, and synchronization instead of magic strings.
+
+All inventory changes go through an injected `InventoryService`:
+
+```python
+server = inventory_service.register_server(
+    "edge-01.example.test",
+    "192.0.2.10",
+    tags=("linux", "edge"),
+    labels={"owner": "platform"},
+)
+inventory_service.mark_healthy(server.uuid)
+```
+
+The service contains business transitions but no SQL. It depends on the
+`InventoryRepository` interface; `SQLiteInventoryRepository` is the only concrete
+inventory persistence implementation. SSHManager, plugins, polling, jobs, and
+interfaces must use application services and never execute SQL.
+
+Schema version 2 normalizes servers, globally unique primary/management
+addresses, tags, server/tag relationships, and labels. Hostnames and addresses
+remain reserved after soft deletion so restoration cannot collide with a reused
+identity. Mutations increment `inventory_version` and stale writes fail instead
+of silently overwriting newer inventory. Search and pagination are bounded; no
+JSON inventory blobs or destructive delete path are provided.
 
 ## Tests and quality checks
 

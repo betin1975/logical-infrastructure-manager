@@ -34,6 +34,11 @@ class TransactionManager:
             f"lim_transaction_state_{id(self)}", default=None
         )
 
+    @property
+    def database(self) -> DatabaseManager:
+        """Return the injected database dependency for composition validation."""
+        return self._database
+
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         """Yield a managed connection, committing or rolling back atomically."""
