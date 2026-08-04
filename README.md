@@ -5,8 +5,8 @@ an authoritative infrastructure inventory and safely coordinating inspection and
 automation through controlled SSH access, durable jobs, and provider plugins.
 
 > **Project status:** foundation development. Configuration, runtime, centralized
-> logging, SQLite persistence, and the authoritative server inventory domain are
-> implemented and tested. SSH, plugins, polling, jobs, and user-facing interfaces
+> logging, SQLite persistence, authoritative server inventory, and discovery
+> observation history are implemented and tested. SSH, plugins, polling, jobs, and user-facing interfaces
 > remain planned; they are not production features yet.
 
 ## Design principles
@@ -165,9 +165,9 @@ Only repository implementations may execute domain SQL. Business logic,
 raw SQLite connections.
 
 Startup applies ordered internal Python migrations and logs only the resulting
-schema version. Migration 1 creates `lim_schema_migrations`; migration 2 creates
-only normalized inventory tables. No job, user, plugin, alert, SSH, or audit table
-exists.
+schema version. Migration 1 creates `lim_schema_migrations`, migration 2 creates
+normalized inventory tables, and migration 3 creates normalized discovery
+history. No job, user, plugin, alert, SSH, or audit table exists.
 
 `BackupManager` uses SQLite's online backup API and atomically publishes mode
 `0600` files under `runtime/backups`. Restore validation is deliberately
@@ -205,6 +205,23 @@ remain reserved after soft deletion so restoration cannot collide with a reused
 identity. Mutations increment `inventory_version` and stale writes fail instead
 of silently overwriting newer inventory. Search and pagination are bounded; no
 JSON inventory blobs or destructive delete path are provided.
+
+## Discovery domain
+
+`app.discovery` represents collected facts, never accepted infrastructure truth.
+Immutable observations retain their source, collection timing, host facts,
+interfaces, addresses, storage, services, packages, containers, bounded metadata,
+and lifecycle state. No collector, SSH client, polling loop, or plugin is included.
+
+`DiscoveryService` records pending observations and controls successful, failed,
+and expired transitions. It retrieves newest-first history and explicitly purges
+only expired observations older than an operator-supplied cutoff. It depends on
+`DiscoveryRepository`; only `SQLiteDiscoveryRepository` executes discovery SQL.
+
+Schema version 3 preserves normalized observation history with foreign keys to
+inventory server UUIDs. Discovery never updates inventory. A future promotion
+workflow must call `InventoryService`, which remains the only authority allowed
+to accept observed facts into inventory.
 
 ## Tests and quality checks
 

@@ -59,11 +59,13 @@ def _create_migration_metadata(connection: sqlite3.Connection) -> None:
 def _internal_migrations() -> tuple[Migration, ...]:
     # Import after Migration is defined so the inventory schema can reuse it
     # without introducing a cycle at module import time.
+    from .discovery_schema import DISCOVERY_MIGRATION
     from .inventory_schema import INVENTORY_MIGRATION
 
     return (
         Migration(1, "create_migration_metadata", _create_migration_metadata),
         INVENTORY_MIGRATION,
+        DISCOVERY_MIGRATION,
     )
 
 

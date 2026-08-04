@@ -7,12 +7,30 @@ from uuid import UUID
 import yaml
 
 from app.config import ConfigurationManager
+from app.discovery import (
+    DiscoveryAddress,
+    DiscoveryContainer,
+    DiscoveryCPU,
+    DiscoveryDisk,
+    DiscoveryInterface,
+    DiscoveryKernel,
+    DiscoveryMemory,
+    DiscoveryMetadata,
+    DiscoveryNetwork,
+    DiscoveryObservation,
+    DiscoveryOperatingSystem,
+    DiscoveryPackage,
+    DiscoveryProcess,
+    ObservationSource,
+    ObservedService,
+)
 from app.inventory import Label, OperatingSystem, Platform, Server, ServerType, Tag
 from app.persistence import DatabaseManager, MigrationManager, TransactionManager
 from app.runtime import RuntimeManager
 
 INVENTORY_NOW = datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
 INVENTORY_SERVER_ID = UUID("11111111-1111-4111-8111-111111111111")
+DISCOVERY_OBSERVATION_ID = UUID("22222222-2222-4222-8222-222222222222")
 
 
 def write_yaml(path: Path, data: Any) -> None:
@@ -108,12 +126,50 @@ def make_inventory_server(**changes: object) -> Server:
         "location": "lab-a",
         "description": "Synthetic inventory server",
         "tags": frozenset({Tag("linux"), Tag("web")}),
-        "labels": frozenset(
-            {Label("owner", "platform"), Label("tier", "edge")}
-        ),
+        "labels": frozenset({Label("owner", "platform"), Label("tier", "edge")}),
         "created_at": INVENTORY_NOW,
         "updated_at": INVENTORY_NOW,
         "notes": "Synthetic notes",
     }
     values.update(changes)
     return Server(**values)  # type: ignore[arg-type]
+
+
+def make_discovery_observation(**changes: object) -> DiscoveryObservation:
+    """Create a complete synthetic non-authoritative observation."""
+    values: dict[str, object] = {
+        "uuid": DISCOVERY_OBSERVATION_ID,
+        "server_uuid": INVENTORY_SERVER_ID,
+        "source": ObservationSource.MANUAL,
+        "discovered_at": INVENTORY_NOW,
+        "collection_duration_ms": 125,
+        "collector_version": "1.0.0",
+        "hostname": "server-01.example.test",
+        "fqdn": "server-01.example.test",
+        "operating_system": DiscoveryOperatingSystem("Linux", "Example", "1"),
+        "kernel": DiscoveryKernel("Linux", "6.12.1"),
+        "architecture": "x86_64",
+        "cpu": DiscoveryCPU("Example CPU", 8, 4),
+        "memory": DiscoveryMemory(16_000, 8_000),
+        "disks": (DiscoveryDisk("sda", 100_000, 50_000, "/", "ext4"),),
+        "interfaces": (DiscoveryInterface("eth0", "02:00:00:00:00:01", True, 1500),),
+        "addresses": (DiscoveryAddress("192.0.2.10", "eth0"),),
+        "services": (ObservedService("redis", "running", "7.2", 6379),),
+        "packages": (DiscoveryPackage("openssl", "3.0", "apt"),),
+        "containers": (
+            DiscoveryContainer("abc123", "web", "example/web:1", "running"),
+        ),
+        "processes": (DiscoveryProcess(42, "redis-server"),),
+        "network": DiscoveryNetwork("example.test", "192.0.2.1"),
+        "docker": DiscoveryMetadata((("version", "26"),)),
+        "redis": DiscoveryMetadata((("version", "7.2"),)),
+        "mysql": DiscoveryMetadata((("version", "8.4"),)),
+        "freepbx": DiscoveryMetadata((("version", "17"),)),
+        "prometheus": DiscoveryMetadata((("version", "3"),)),
+        "raw_metadata": DiscoveryMetadata((("collector", "synthetic"),)),
+        "notes": "Synthetic observation",
+        "created_at": INVENTORY_NOW,
+        "updated_at": INVENTORY_NOW,
+    }
+    values.update(changes)
+    return DiscoveryObservation(**values)  # type: ignore[arg-type]

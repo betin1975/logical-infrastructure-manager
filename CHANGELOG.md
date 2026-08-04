@@ -39,6 +39,13 @@ after its first release.
   optimistic inventory versions.
 - SQLite inventory repository with search, pagination, filters, duplicate defense,
   transaction rollback, and infrastructure-error translation.
+- Immutable discovery observation models and a SQL-free lifecycle service for
+  recording, completion, failure, expiry, history, and explicit retention cleanup.
+- Schema version 3 with normalized discovery observations, interfaces, addresses,
+  disks, services, packages, containers, processes, bounded metadata, foreign
+  keys, and documented query indexes.
+- SQLite discovery repository with latest/history lookup, filtering, search,
+  pagination, optimistic lifecycle transitions, and atomic cleanup.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.

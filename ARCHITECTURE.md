@@ -4,8 +4,8 @@
 
 This document defines the target architecture and the boundaries new code must
 respect. LIM is currently a foundation: configuration, runtime, logging, SQLite
-persistence, and authoritative server inventory exist, while SSH, plugins,
-polling, and the job engine remain planned.
+persistence, authoritative server inventory, and discovery observation history
+exist, while SSH, plugins, polling, and the job engine remain planned.
 The architecture is intentionally explicit before those business capabilities
 are implemented.
 
@@ -48,6 +48,7 @@ app/
   runtime.py             Runtime path lifecycle (implemented)
   logging_manager.py     Central logging and redaction (implemented)
   inventory/             Immutable model, repository protocol, service
+  discovery/             Observation model, repository protocol, service
   persistence/           SQLite policy, transactions, migrations, backups
   bootstrap.py           Composition root and lifecycle (planned)
   domain/                Entities, value objects, invariants, domain errors
@@ -189,6 +190,45 @@ Inventory indexes are intentional and covered by migration tests:
 Search currently uses bounded, parameterized substring matching across hostname,
 display name, environment, location, addresses, tags, and labels. FTS is deferred
 until measured inventory size and query requirements justify it.
+
+## Discovery
+
+Discovery records collected facts and historical evidence; it is not an alternate
+inventory authority. Every `DiscoveryObservation` references an inventory server
+UUID and records its source, collection timing, collector version, host identity,
+operating-system and hardware facts, network facts, services, packages,
+containers, processes, bounded platform metadata, lifecycle, and synchronization
+state. Models are immutable, timestamps are UTC, and state categories are enums.
+
+`DiscoveryService` is the SQL-free observation lifecycle boundary. It records
+pending observations, marks them successful or failed, expires completed history,
+retrieves latest/history views, and explicitly purges only expired observations
+older than a supplied UTC cutoff. It never invokes `InventoryRepository` or
+changes authoritative inventory. A future acceptance workflow must call
+`InventoryService`; discovery synchronization cannot be changed through the
+discovery lifecycle repository.
+
+Schema version 3 adds normalized discovery-owned tables for observations,
+interfaces, addresses, disks, services, packages, containers, processes, and
+namespaced key/value metadata. Foreign keys cascade observation children and
+prevent observations for nonexistent inventory servers. Collected facts are
+immutable after insertion; lifecycle changes use optimistic observation versions.
+
+Discovery indexes match implemented queries:
+
+- Server UUID plus descending discovery time supports latest and history reads.
+- Source plus discovery time supports collector-specific history.
+- Status plus discovery time supports outcome filtering.
+- State plus update time supports lifecycle queries and retention cleanup.
+- Address value supports fact search; child foreign-key indexes support hydration.
+- Metadata namespace/key supports future bounded metadata inspection.
+
+`SQLiteDiscoveryRepository` is the only discovery SQL implementation. It uses
+short explicit transactions, parameterized values, bounded pages, normalized
+aggregate hydration, rollback-safe child insertion, and optimistic lifecycle
+updates. Search covers hostname, FQDN, addresses, services, and packages. Cleanup
+is intentionally destructive only for already-expired history and requires an
+explicit cutoff; automatic scheduling and retention policy remain future work.
 
 ## SSH
 
@@ -334,8 +374,8 @@ functionality in this foundation change:
 1. Define inventory relationships beyond servers, including logical resources,
    connections, provider identity, and ownership, before extending schema version
    2.
-2. Define inventory history, provenance, merge/conflict policy, bulk operations,
-   retention, and approved purge behavior before automated discovery is added.
+2. Define discovery-to-inventory provenance, merge/conflict and promotion policy,
+   bulk operations, and retry behavior before automated collection is added.
 3. Define production backup scheduling, retention, quotas, off-host copies, and
    destructive restore orchestration with operator confirmation and rollback.
 4. Design and implement the sole `SSHManager`, including host-key policy,

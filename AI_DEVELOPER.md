@@ -181,6 +181,22 @@ public objects.
 - Store inventory timestamps as timezone-aware UTC values and use enums instead
   of magic state strings.
 
+## Discovery domain
+
+- Discovery stores immutable observations and history; it never represents
+  accepted inventory truth.
+- `DiscoveryService` is the observation lifecycle gateway. Collectors provide
+  validated facts through it and never write discovery repositories directly.
+- Discovery may reference inventory server UUIDs but must never update inventory.
+  Only `InventoryService` may accept observed facts into authoritative state.
+- Only the concrete discovery repository under `app.persistence` executes
+  discovery SQL. SSHManager, plugins, polling, and jobs receive services.
+- Retention cleanup is explicit and may purge only expired observations older
+  than a validated UTC cutoff. Never silently discard pending or completed
+  observation history.
+- Bound raw metadata and never collect or persist credentials, command lines, or
+  complete command output as discovery facts.
+
 ## SSH and remote execution
 
 - `SSHManager` is the sole gateway for SSH behavior.
