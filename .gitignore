@@ -216,3 +216,81 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ============================
+# LIM Runtime Data
+# ============================
+data/*
+logs/*
+backups/*
+ssh/*
+
+# Keep empty directories
+!data/.gitkeep
+!logs/.gitkeep
+!backups/.gitkeep
+!ssh/.gitkeep
+
+# ============================
+# Databases
+# ============================
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================
+# SSH
+# ============================
+known_hosts
+*.pem
+*.key
+
+# ============================
+# Secrets
+# ============================
+.env
+.env.local
+.env.*
+
+# =====================================================
+# Logical Infrastructure Manager (LIM)
+# =====================================================
+
+# Runtime
+runtime/*
+
+# Keep directory structure
+!runtime/data/
+!runtime/logs/
+!runtime/backups/
+!runtime/jobs/
+
+!runtime/data/.gitkeep
+!runtime/logs/.gitkeep
+!runtime/backups/.gitkeep
+!runtime/jobs/.gitkeep
+
+# SSH credentials
+ssh/*
+!ssh/.gitkeep
+
+# Runtime databases
+*.sqlite
+*.sqlite3
+lim.db
+jobs.db
+
+# Host trust
+known_hosts
+
+# Local configuration
+config/local.yml
+
+# Docker overrides
+docker-compose.override.yml
+
+# IDE
+.idea/
+
+# macOS
+.DS_Store
