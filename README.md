@@ -4,10 +4,10 @@ Logical Infrastructure Manager (LIM) is a local-first platform for maintaining
 an authoritative infrastructure inventory and safely coordinating inspection and
 automation through controlled SSH access, durable jobs, and provider plugins.
 
-> **Project status:** foundation development. Configuration loading, runtime
-> initialization, and centralized logging are implemented and tested. Inventory,
-> SSH, plugins, jobs, and user-facing interfaces are architectural boundaries
-> only; they are not production features yet.
+> **Project status:** foundation development. Configuration, runtime, centralized
+> logging, and SQLite persistence infrastructure are implemented and tested.
+> Inventory tables, SSH, plugins, jobs, and user-facing interfaces remain planned;
+> they are not production features yet.
 
 ## Design principles
 
@@ -145,6 +145,39 @@ sensitive values; sensitive environment values; ordinary messages; structured
 context; and formatted exception tracebacks. Redaction is defense in depth, not
 permission to intentionally log credentials or private keys.
 
+## Persistence
+
+SQLite is LIM's authoritative persistent store. The default database is
+`runtime/data/lim.sqlite3`; its location and every SQLite policy come from
+configuration and `RuntimeManager`. `DatabaseManager` creates mode `0600` files
+and returns short-lived connections with foreign keys enabled, a 5-second busy
+timeout, WAL journaling, `NORMAL` synchronization, `sqlite3.Row` access, deferred
+explicit transactions, and same-thread enforcement.
+
+Application operations use `TransactionManager`:
+
+```python
+from app.persistence import BaseRepository
+
+with transaction_manager.transaction() as connection:
+    repository = BaseRepository(connection)
+    # A domain repository would execute parameterized SQL here.
+```
+
+The manager commits successful scopes, rolls back failures, and maps nested
+scopes to savepoints. Repositories receive a connection; they do not construct a
+database manager, control transactions, or run migrations.
+
+Startup applies ordered internal Python migrations and logs only the resulting
+schema version. The initial migration creates `lim_schema_migrations` and no
+inventory, server, job, user, plugin, alert, or audit tables.
+
+`BackupManager` uses SQLite's online backup API and atomically publishes mode
+`0600` files under `runtime/backups`. Restore validation is deliberately
+non-destructive: it opens a contained candidate read-only, runs SQLite integrity
+validation, verifies migration metadata, and reports its schema version. Backup
+retention and active-database replacement are not implemented.
+
 ## Tests and quality checks
 
 Run the complete local validation suite before submitting changes:
@@ -195,6 +228,7 @@ Runtime directory placeholders are committed; their contents are ignored.
 ## Documentation
 
 - [Architecture and technical debt](ARCHITECTURE.md)
+- [Architecture decisions](DECISIONS.md)
 - [Engineering operating instructions](AI_DEVELOPER.md)
 - [Installation](INSTALL.md)
 - [Security policy](SECURITY.md)

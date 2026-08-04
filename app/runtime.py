@@ -46,12 +46,18 @@ class RuntimeManager:
         self._config = config
         self._application_root = Path(application_root).resolve()
         self._lock = threading.RLock()
+        self._initialized = False
         self.paths = self._resolve_paths()
 
     @property
     def runtime_path(self) -> Path:
         """Return the configured runtime root."""
         return self.paths.root
+
+    @property
+    def is_initialized(self) -> bool:
+        """Return whether the runtime tree passed its latest initialization."""
+        return self._initialized
 
     def initialize(self) -> RuntimePaths:
         """Create and validate the complete runtime tree.
@@ -60,6 +66,7 @@ class RuntimeManager:
         writability so permission changes are detected promptly.
         """
         with self._lock:
+            self._initialized = False
             for label, path in self._directories():
                 self._ensure_directory(label, path)
 
@@ -69,6 +76,7 @@ class RuntimeManager:
             for path in self._leaf_directories():
                 self._ensure_placeholder(path)
 
+            self._initialized = True
             return self.paths
 
     def data_path(self, name: str | Path) -> Path:

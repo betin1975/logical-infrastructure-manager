@@ -47,9 +47,11 @@ def test_initialize_creates_complete_runtime_tree(
         runtime_config_factory(),
         application_root=tmp_path,
     )
+    assert not manager.is_initialized
 
     paths = manager.initialize()
 
+    assert manager.is_initialized
     assert paths == RuntimePaths(
         root=tmp_path / "runtime",
         data=tmp_path / "runtime/data",
@@ -287,7 +289,10 @@ def test_application_startup_initializes_runtime(
             events.append("initialized")
 
     class FakeLogger:
-        def info(self, message: str) -> None:
+        def info(self, message: str, *args: object) -> None:
+            events.append((message, args))
+
+        def exception(self, message: str) -> None:
             events.append(message)
 
     class FakeLoggingManager:
@@ -301,9 +306,29 @@ def test_application_startup_initializes_runtime(
             events.extend((component, context))
             return FakeLogger()
 
+    class FakeDatabaseManager:
+        def __init__(self, config: object, runtime: object) -> None:
+            events.extend((config, runtime))
+
+        def initialize(self) -> None:
+            events.append("database initialized")
+
+    class FakeMigrationState:
+        schema_version = 1
+
+    class FakeMigrationManager:
+        def __init__(self, database: object) -> None:
+            events.append(database)
+
+        def apply_pending(self) -> FakeMigrationState:
+            events.append("migrations applied")
+            return FakeMigrationState()
+
     monkeypatch.setattr(app_main, "ConfigManager", lambda: fake_config)
     monkeypatch.setattr(app_main, "RuntimeManager", FakeRuntimeManager)
     monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
+    monkeypatch.setattr(app_main, "DatabaseManager", FakeDatabaseManager)
+    monkeypatch.setattr(app_main, "MigrationManager", FakeMigrationManager)
 
     assert app_main.main() == 0
     assert events[0] is fake_config
@@ -311,12 +336,20 @@ def test_application_startup_initializes_runtime(
     assert events[2] == "initialized"
     assert events[3] is fake_config
     assert isinstance(events[4], FakeRuntimeManager)
-    assert events[5:] == [
+    assert events[5:9] == [
         "logging initialized",
         "bootstrap",
         {"operation": "startup"},
-        "LIM startup foundation initialized",
+        fake_config,
     ]
+    assert isinstance(events[9], FakeRuntimeManager)
+    assert events[10] == "database initialized"
+    assert isinstance(events[11], FakeDatabaseManager)
+    assert events[12] == "migrations applied"
+    assert events[13] == (
+        "LIM startup foundation initialized with schema_version=%d",
+        (1,),
+    )
 
 
 def test_application_startup_sanitizes_pre_logging_failure(

@@ -137,12 +137,21 @@ public objects.
 ## SQLite and inventory
 
 - SQLite is the authoritative inventory and must enforce foreign keys.
+- Open SQLite only through `DatabaseManager`; connections are short-lived and
+  operation-scoped, never global or shared across unrelated work.
+- `TransactionManager` exclusively owns transaction control. Repositories receive
+  the active connection through injection and never commit or roll back.
 - Schema changes require ordered, transactional migrations and rollback or
-  recovery guidance. Never edit deployed database files manually.
+  recovery guidance. Run them through `MigrationManager`; repositories never
+  migrate. Never edit deployed database files manually.
 - Use explicit transactions for multi-record changes and short transactions for
   concurrency. Define busy timeouts and WAL behavior centrally.
+- Keep SQL visible and parameterized. Do not introduce generic CRUD abstractions,
+  log SQL parameters, or include database contents in exceptions.
 - Store UTC timestamps in an unambiguous format.
-- Backups must use SQLite-safe backup mechanisms and be restore-tested.
+- Create backups through `BackupManager` using SQLite's backup API. Restore
+  validation is read-only; destructive replacement requires a future approved
+  design and must never be inferred from validation success.
 - Never put database files in Git, images, logs, or bug reports.
 
 ## SSH and remote execution

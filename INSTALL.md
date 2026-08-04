@@ -1,7 +1,7 @@
 # Installation
 
 LIM is currently a development foundation rather than a deployable service.
-These instructions install and verify the implemented configuration subsystem.
+These instructions install and verify the implemented foundation subsystems.
 
 ## Local development
 
@@ -33,15 +33,21 @@ python -m pytest --cov=app
 ruff check .
 ```
 
-Successful startup creates and validates the configured runtime tree and writes
-the foundation event to `runtime/logs/application.log`. The default rotation is
-10 MiB with five backups. Override logging behavior through `config/local.yml` or
-`LIM_LOGGING__...` environment variables; never place credentials in logging
-configuration.
+Successful startup creates and validates the configured runtime tree, initializes
+`runtime/data/lim.sqlite3`, applies pending internal migrations, and writes the
+resulting schema version to `runtime/logs/application.log`. Repeated startup is
+idempotent. The default log rotation is 10 MiB with five backups. Override
+logging or SQLite policies through `config/local.yml` or `LIM_...` environment
+variables; never place credentials in configuration.
+
+Database and backup files use mode `0600`. Back up through the Python
+`BackupManager` API so WAL state is copied consistently; never copy a live SQLite
+file directly. Restore validation does not replace the active database. Production
+retention, restore orchestration, and disaster-recovery procedures remain pending.
 
 ## Docker
 
-Docker Compose currently builds a one-shot configuration validation image:
+Docker Compose currently builds a one-shot foundation initialization image:
 
 ```shell
 docker compose build
@@ -54,6 +60,6 @@ UID/GID `10001` on Linux hosts. Do not add SSH credentials to an image.
 ## Production status
 
 There is no supported production deployment until inventory migrations,
-`SSHManager`, the job engine, an application entry point, health checks, backup
-and restore procedures, and authentication/authorization requirements are
-implemented and reviewed.
+`SSHManager`, the job engine, a long-running application entry point, health
+checks, backup retention and destructive restore procedures, and
+authentication/authorization requirements are implemented and reviewed.

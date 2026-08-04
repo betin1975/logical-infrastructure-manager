@@ -23,6 +23,18 @@ logging:
     %(message)s
   timestamp_format: "%Y-%m-%dT%H:%M:%S%z"
 
+database:
+  filename: lim.sqlite3
+  foreign_keys: true
+  busy_timeout_ms: 5000
+  connection_timeout_seconds: 5.0
+  journal_mode: WAL
+  synchronous_mode: NORMAL
+  row_factory: row
+  transaction_mode: DEFERRED
+  check_same_thread: true
+  backup_prefix: lim-backup
+
 ssh:
   directory: ssh
   known_hosts: ssh/known_hosts

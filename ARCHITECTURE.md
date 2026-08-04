@@ -3,8 +3,9 @@
 ## Status and intent
 
 This document defines the target architecture and the boundaries new code must
-respect. LIM is currently a foundation: layered configuration exists, while the
-inventory repository, SSH manager, plugin runtime, and job engine remain planned.
+respect. LIM is currently a foundation: configuration, runtime, logging, and
+SQLite persistence infrastructure exist, while inventory repositories, SSH,
+plugins, and the job engine remain planned.
 The architecture is intentionally explicit before those business capabilities
 are implemented.
 
@@ -39,11 +40,11 @@ app/
   config.py              Layered configuration (implemented)
   runtime.py             Runtime path lifecycle (implemented)
   logging_manager.py     Central logging and redaction (implemented)
+  persistence/           SQLite policy, transactions, migrations, backups
   bootstrap.py           Composition root and lifecycle (planned)
   domain/                Entities, value objects, invariants, domain errors
   application/           Use cases, commands, queries, service interfaces
   infrastructure/
-    database/            SQLite connection, migrations, repositories
     ssh/                 SSHManager and remote execution data types
     jobs/                Durable job store and worker implementation
     plugins/             Discovery, validation, and plugin adapters
@@ -75,7 +76,7 @@ application dependency graph. Its responsibilities are:
    permissions.
 3. Construct and initialize `LoggingManager` with configuration and runtime
    dependencies.
-4. Open SQLite, enable required pragmas, and run migrations.
+4. Construct and initialize `DatabaseManager`, then run `MigrationManager`.
 5. Construct repositories and domain/application services.
 6. Construct the single `SSHManager`.
 7. Discover and validate plugins.
@@ -91,8 +92,9 @@ SQLite is LIM's authoritative inventory. Remote observations become authoritativ
 only after validation and a committed inventory transaction. Plugin-local caches,
 job output, YAML files, and remote state are not inventory authorities.
 
-The default database location will be under `runtime/data`. Database access will
-be centralized behind repositories with these rules:
+The default database is `runtime/data/lim.sqlite3`, resolved through
+`ConfigManager` and `RuntimeManager`; consumers never hardcode it. The
+`app.persistence` package owns SQLite policy with these rules:
 
 - Foreign keys enabled on every connection.
 - Ordered, versioned, transactional schema migrations.
@@ -102,6 +104,33 @@ be centralized behind repositories with these rules:
 - UTC timestamps and stable identifiers.
 - SQLite online backup API for consistent backups.
 - Repository interfaces testable against temporary databases.
+
+`DatabaseManager` securely creates the file and opens a new connection for each
+operation. Connections use autocommit mode at the driver boundary so only
+`TransactionManager` can start or finish transactions. Foreign keys, busy
+timeout, journal mode, synchronous mode, row factory, connection timeout,
+transaction mode, and thread checks come from validated configuration. The
+default is WAL with `NORMAL` synchronization, 5-second busy and connection
+timeouts, `sqlite3.Row`, deferred transactions, and same-thread connection use.
+
+`TransactionManager` commits successful outer scopes and rolls them back on any
+exception. Nested scopes use uniquely named savepoints. SQLite authorization
+rejects transaction-control statements from repository code, preventing hidden
+commits. Repositories receive the active connection and contain explicit,
+parameterized domain SQL; there is deliberately no generic CRUD framework.
+
+Migrations are consecutively versioned Python records. Every migration runs and
+records its history in one transaction, while separate migrations commit
+independently so earlier successful versions survive a later failure. The initial
+migration creates only `lim_schema_migrations`; no business table exists yet.
+Inspection uses a read-only connection and never creates metadata.
+
+`BackupManager` copies a live source with SQLite's online backup API into a mode
+`0600` temporary file, validates it, then atomically publishes it under
+`runtime/backups`. Candidate restore validation opens a contained, non-symlink
+file read-only, runs `PRAGMA integrity_check`, validates migration metadata, and
+reports the schema version. It never replaces the active database. Scheduling,
+retention, off-host copies, and destructive restore orchestration are deferred.
 
 Inventory entities are expected to include logical resources, connections,
 provider identity, observed state, desired metadata, and audit timestamps. Their
@@ -243,10 +272,10 @@ The following work is recommended but intentionally not implemented as business
 functionality in this foundation change:
 
 1. Define approved inventory use cases and a normalized SQLite schema.
-2. Build a migration runner, schema-version policy, and restore-tested backup
-   process before persisting production inventory.
-3. Add repository interfaces and SQLite implementations with foreign-key,
-   transaction, busy-timeout, and concurrency tests.
+2. Design the first domain repository interfaces and inventory migrations only
+   after inventory use cases and retention requirements are approved.
+3. Define production backup scheduling, retention, quotas, off-host copies, and
+   destructive restore orchestration with operator confirmation and rollback.
 4. Design and implement the sole `SSHManager`, including host-key policy,
    credential abstraction, timeouts, cancellation, output limits, and audit data.
 5. Define a versioned plugin manifest and typed capability contract before

@@ -8,3 +8,10 @@ logging:
   level: INFO
   console_enabled: true
   file_enabled: true
+
+# SQLite policy overrides. Keep the database inside paths.data.
+database:
+  busy_timeout_ms: 5000
+  connection_timeout_seconds: 5.0
+  journal_mode: WAL
+  synchronous_mode: NORMAL

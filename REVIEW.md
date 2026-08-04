@@ -1,9 +1,10 @@
 # Summary
 
 This document records the completed self-review of all changes currently made on
-this branch, including the Configuration Manager, Runtime Manager, and Logging
-Foundation. The review covers architecture, security, maintainability, tests,
-Docker and Git practices, remaining technical debt, and release readiness.
+this branch, including the Configuration Manager, Runtime Manager, Logging
+Foundation, and Persistence Foundation. The review covers architecture, security,
+maintainability, tests, Docker and Git practices, remaining technical debt, and
+release readiness.
 
 This branch establishes the Logical Infrastructure Manager (LIM) project
 foundation. It adds permanent engineering guidance, a target architecture,
@@ -15,6 +16,10 @@ features.
 Runtime lifecycle management and centralized logging are now implemented. Logging
 uses configuration-driven console and rotating-file handlers, structured context,
 UTC timestamps, atomic reconfiguration, and centralized secret redaction.
+SQLite persistence now provides operation-scoped connections, explicit nested
+transactions, ordered migrations, injected repository contracts, consistent
+backups, and non-destructive restore validation without introducing business
+tables.
 
 The architectural direction is appropriate for an early-stage infrastructure
 manager: a modular monolith, inward dependency flow, SQLite as the authoritative
@@ -37,6 +42,8 @@ version-enforcement, and documentation concerns remain.
   SQLite, SSH, plugin, and job rules.
 - `ARCHITECTURE.md` defines the modular-monolith target, ownership boundaries,
   runtime model, and technical-debt register.
+- `DECISIONS.md` records accepted persistence authority, lifecycle, migration,
+  backup, and restore decisions as ADRs.
 - `app/__init__.py` exports the public configuration API.
 - `app/config.py` implements layered YAML configuration, environment overrides,
   environment-variable expansion, dotted access, validation, snapshots, and
@@ -45,7 +52,11 @@ version-enforcement, and documentation concerns remain.
   runtime tree.
 - `app/logging_manager.py` implements centralized handlers, structured adapters,
   rotation, UTC formatting, exception-safe redaction, and atomic reconfiguration.
-- `app/__main__.py` initializes configuration, runtime, and logging in order.
+- `app/__main__.py` initializes configuration, runtime, logging, SQLite, and
+  internal migrations in order.
+- `app/persistence/` owns database policy, operation-scoped connections,
+  transactions, migrations, repository contracts, backup, restore validation,
+  and persistence-specific errors.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -60,6 +71,9 @@ version-enforcement, and documentation concerns remain.
   helpers, idempotency, and startup integration.
 - `tests/test_logging_manager.py` verifies handler lifecycle, rotation, context,
   reconfiguration, redaction, permissions, and disabled outputs.
+- `tests/test_persistence.py` verifies SQLite policies, file security,
+  transactions, savepoints, migrations, repository injection, backups, restore
+  validation, startup, WAL behavior, readers, and writer contention.
 
 ## Modified
 
@@ -75,6 +89,10 @@ version-enforcement, and documentation concerns remain.
 - `UPGRADE.md` now records pre-release limitations and future migration needs.
 - `docker-compose.yml` now defines a hardened one-shot configuration check.
 - `requirements.txt` now declares PyYAML as the sole runtime dependency.
+- `app/config.py`, `app/runtime.py`, `app/__init__.py`, and `app/__main__.py` now
+  validate persistence configuration, expose initialization state and public
+  APIs, and initialize/migrate SQLite after logging.
+- `config/default.yml` and `config/local.yml.example` define safe SQLite defaults.
 
 # Architecture Review
 
@@ -103,6 +121,41 @@ version-enforcement, and documentation concerns remain.
   failed reconfiguration preserves the active setup.
 - A single structured application log keeps cross-component chronology intact and
   avoids duplicated routing handlers.
+- SQLite connections are short-lived and never stored globally. Configuration is
+  applied uniformly to every connection, including foreign keys and busy timeout.
+- `TransactionManager` is the sole transaction owner; nested work uses savepoints,
+  and SQLite authorization rejects hidden repository commits or rollbacks.
+- Python migrations remain transparent and dependency-free. Each version commits
+  independently, while its schema change and history record are atomic.
+- Backup uses SQLite's online API, validates before publication, and never infers
+  permission to replace the active authoritative database.
+
+## Persistence foundation self-review
+
+- **SQL injection:** No caller value is interpolated into SQL. Migration metadata
+  and lookups use parameters. Dynamic pragma values come from closed allowlists,
+  savepoint names use manager-generated integers, and internal identifiers are
+  fixed constants. Trusted migration functions are reviewed application code.
+- **Transactions:** Driver autocommit is enabled only so `TransactionManager`
+  explicitly controls `BEGIN`, commit, rollback, and savepoints. Tests prove full
+  rollback, nested rollback isolation, and rejection of repository commits.
+- **Migrations:** Versions are positive, unique, contiguous, sorted, and validated
+  before mutation. Each migration and history insert share one transaction;
+  earlier successful versions survive a later failure. Inspection is read-only.
+- **Backup and paths:** Database and backup names are single safe components.
+  Managed directories, database files, candidates, and destinations reject
+  symlinks and traversal. SQLite URI no-follow mode supplements pre-open checks.
+  Backup publication is temporary-file based, mode `0600`, validated, and atomic.
+- **Concurrency:** Every thread obtains its own connection. Tests cover concurrent
+  readers, deterministic writer contention, configured busy timeout, and WAL
+  snapshot reads. LIM still has SQLite's single-writer constraint.
+- **Logging and secrets:** Persistence does not log SQL, parameters, paths, or
+  database contents. Startup logs only schema version, and failures pass through
+  the centralized redacting logger with generic persistence messages.
+
+No blocking persistence defect remained after the review. The review did identify
+and fix dot-prefixed database-name handling, SQLite no-follow URI use, strict
+migration-history validation, and fail-closed database reinitialization state.
 
 ## Concerns
 
@@ -200,6 +253,12 @@ explicit cause is retained and exception context is suppressed.
   configured runtime tree.
 - Component child handlers are removed before use, preventing redaction bypass and
   duplicate output within the owned logger namespace.
+- SQLite database, journal, temporary backup, and published backup files use mode
+  `0600`; runtime Git exclusions cover all of them recursively.
+- Database and backup writes reject symlinks and traversal, use SQLite no-follow
+  URI mode, and remain directly contained in RuntimeManager-owned directories.
+- Backup and restore errors do not include database contents or integrity output,
+  and migration failures report only version and exception type.
 
 # Technical Debt
 
@@ -220,10 +279,13 @@ explicit cause is retained and exception context is suppressed.
 ## Inventory and persistence
 
 - Approve inventory use cases and a normalized SQLite schema.
-- Implement ordered transactional migrations and schema-version policy.
-- Add repository contracts, foreign-key enforcement, busy-timeout policy, WAL
-  policy, transaction tests, and concurrency tests.
-- Implement SQLite-safe backups and restore verification.
+- Define backup scheduling, retention, quotas, off-host copies, and alerting.
+- Design destructive restore orchestration with shutdown coordination, operator
+  confirmation, rollback, and end-to-end recovery tests.
+- Define migration compatibility, application-version requirements, downgrade
+  policy, and optional migration checksums before the first stable release.
+- Add multi-process contention and crash-recovery integration tests on every
+  supported deployment filesystem.
 
 ## SSH, plugins, and jobs
 
@@ -259,11 +321,11 @@ explicit cause is retained and exception context is suppressed.
 The implemented suite was run against CPython 3.12.13 with these results:
 
 ```text
-74 tests passed
-93.67% branch-aware coverage
+125 tests passed
+91.00% branch-aware coverage
 Ruff passed
 Python compilation passed
-Configuration, runtime, startup, and logging integration tests passed
+Configuration, runtime, logging, persistence, startup, and concurrency tests passed
 Compose YAML structural parsing passed
 git diff --check passed
 ```
@@ -292,6 +354,12 @@ also show plain `python -m pytest`, which does not enforce coverage.
 - Concurrent multi-manager reconfiguration stress tests.
 - Property-based or fuzz tests for redaction false negatives and pathological
   message sizes.
+- Multi-process SQLite contention and process-crash recovery.
+- Backup failure injection for disk-full, permission loss, interrupted atomic
+  rename, and cleanup failure conditions.
+- Restore validation against adversarial SQLite files beyond synthetic corruption
+  and malformed migration metadata.
+- Container persistence behavior on Linux bind mounts and named volumes.
 
 # Remaining TODOs
 
@@ -319,8 +387,8 @@ also show plain `python -m pytest`, which does not enforce coverage.
 2. Add CI, container builds, type checking, dependency auditing, and secret
     scanning.
 3. Add licensing and contributor-governance files.
-4. Implement SQLite, SSHManager, plugins, jobs, bootstrap, and interfaces only
-    after their designs are approved.
+4. Implement inventory tables, SSHManager, plugins, jobs, bootstrap, and
+   interfaces only after their designs are approved.
 
 # Overall Assessment
 
@@ -330,12 +398,20 @@ dependencies minimal, establishes useful module ownership, and creates a solid
 unit-testing baseline. The SQLite, SSHManager, plugin, job, and bootstrap rules
 are appropriate long-term guardrails.
 
-The Runtime Manager and Logging Foundation follow those boundaries. Logging is
+The Runtime Manager, Logging Foundation, and Persistence Foundation follow those
+boundaries. Logging is
 configuration-driven, uses only the standard library, prevents duplicate or
 bypass handlers, preserves valid configuration on failure, redacts structured and
 exception data, and applies restrictive file permissions and symlink-safe opens.
 No blocking issue was found in the final logging self-review after the `0640`
 rollover and no-follow hardening.
+
+Persistence is likewise configuration-driven and standard-library only. It keeps
+connections and transactions operation-scoped, enforces SQLite policy centrally,
+fails closed on invalid migration state, uses consistent atomic backups, and
+limits restore support to read-only validation. No domain tables or speculative
+CRUD framework were introduced. No blocking database or security issue remains
+after the persistence self-review and hardening changes described above.
 
 The original blocking findings are resolved. Runtime inventory, job, log, and
 backup artifacts are recursively excluded from Git, and malformed environment

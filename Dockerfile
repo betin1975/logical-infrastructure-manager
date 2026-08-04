@@ -28,5 +28,5 @@ RUN mkdir -p runtime/data runtime/jobs runtime/logs runtime/backups ssh \
 
 USER lim
 
-# The one-shot startup initializes configuration, runtime, and centralized logging.
+# One-shot startup initializes config, runtime, logging, SQLite, and migrations.
 CMD ["python", "-m", "app"]

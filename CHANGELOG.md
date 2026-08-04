@@ -20,6 +20,14 @@ after its first release.
   validation, managed placeholders, safe child-path helpers, and startup wiring.
 - Centralized console and rotating-file logging with structured component context,
   UTC timestamps, idempotent atomic reconfiguration, and nested secret redaction.
+- SQLite persistence foundation with operation-scoped connections, enforced
+  pragmas, explicit transactions, nested savepoints, and injected repository
+  contracts.
+- Ordered transactional Python migrations and initial migration-history metadata.
+- Atomic SQLite online backups and read-only restore validation with integrity and
+  schema-version checks.
+- Architecture decision records for persistence authority, connection lifecycle,
+  migrations, backup, and deferred destructive restore.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.
@@ -40,5 +48,7 @@ after its first release.
   and container build contexts.
 - Configured the container to run as a non-root user with dropped capabilities,
   `no-new-privileges`, and a read-only root filesystem under Compose.
+- Restricted SQLite database, journal, and backup files to mode `0600`; rejected
+  unsafe names, traversal, symlinks, and paths outside runtime-owned directories.
 
 [Unreleased]: https://github.com/betin1975/logical-infrastructure-manager/compare/HEAD...HEAD
