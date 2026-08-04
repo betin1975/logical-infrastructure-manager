@@ -2,6 +2,7 @@
 
 from .backup import BackupManager, BackupResult, RestoreValidationResult
 from .database import DatabaseManager, DatabaseSettings
+from .discovery_repository import SQLiteDiscoveryRepository
 from .errors import (
     BackupError,
     DatabaseConfigurationError,
@@ -46,6 +47,7 @@ __all__ = [
     "RestoreValidationError",
     "RestoreValidationResult",
     "SQLiteInventoryRepository",
+    "SQLiteDiscoveryRepository",
     "TransactionError",
     "TransactionManager",
 ]

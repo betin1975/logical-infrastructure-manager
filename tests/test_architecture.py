@@ -26,6 +26,7 @@ def test_sqlite_access_is_confined_to_persistence_and_composition() -> None:
         "BaseRepository",
         "DatabaseManager",
         "MigrationManager",
+        "SQLiteDiscoveryRepository",
         "SQLiteInventoryRepository",
         "TransactionManager",
     }

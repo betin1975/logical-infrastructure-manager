@@ -137,3 +137,36 @@ adding a new ADR that explicitly supersedes it; accepted history is not rewritte
 - **Consequences:** Future components receive the service or narrower application
   interfaces. Bulk workflows may require new service methods, but must not bypass
   the mutation boundary.
+
+## ADR-0011: Discovery represents observations, not truth
+
+- **Status:** Accepted
+- **Context:** Collectors may report incomplete, stale, conflicting, or failed
+  infrastructure facts that must remain auditable without silently changing LIM's
+  accepted model.
+- **Decision:** Discovery owns immutable observation history and lifecycle state.
+  Observations reference inventory servers but are never authoritative inventory.
+- **Consequences:** Collector output is validated and retained independently.
+  Expired history is purged only through an explicit cutoff-based operation.
+
+## ADR-0012: Inventory remains the sole authoritative infrastructure model
+
+- **Status:** Accepted
+- **Context:** Adding durable discovery history could otherwise be interpreted as
+  a second infrastructure authority.
+- **Decision:** SQLite inventory tables remain the only accepted infrastructure
+  model. Discovery tables contain evidence only, regardless of source or status.
+- **Consequences:** Reads requiring accepted state use inventory services. A
+  successful discovery observation alone never changes operational targeting.
+
+## ADR-0013: Only InventoryService promotes discovery facts
+
+- **Status:** Accepted
+- **Context:** Direct discovery-to-inventory SQL or repository writes would bypass
+  validation, optimistic concurrency, provenance, and future conflict policy.
+- **Decision:** Only an approved `InventoryService` operation may accept discovery
+  facts into authoritative inventory. `DiscoveryService` never updates inventory,
+  and its repository cannot change synchronization state.
+- **Consequences:** Promotion is deliberately not implemented in this foundation.
+  Its future design must define field ownership, conflicts, audit records, and
+  retries before adding behavior.

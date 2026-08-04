@@ -261,6 +261,7 @@ def test_initial_migration_and_idempotent_history(tmp_path: Path) -> None:
     assert [(item.version, item.name) for item in first.history] == [
         (1, "create_migration_metadata"),
         (2, "create_inventory_schema"),
+        (3, "create_discovery_schema"),
     ]
 
 

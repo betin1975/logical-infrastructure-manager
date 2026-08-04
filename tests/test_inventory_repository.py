@@ -48,7 +48,11 @@ def test_inventory_migration_creates_only_normalized_inventory_tables_and_indexe
     tmp_path: Path,
 ) -> None:
     stack = create_persistence_stack(tmp_path)
-    state = migrate_database(stack).inspect()
+    state = MigrationManager(
+        stack.database,
+        stack.transactions,
+        migrations=INTERNAL_MIGRATIONS[:2],
+    ).apply_pending()
 
     assert state.schema_version == 2
     with stack.database.connection(read_only=True) as connection:

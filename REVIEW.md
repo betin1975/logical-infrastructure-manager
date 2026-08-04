@@ -68,6 +68,12 @@ version-enforcement, and documentation concerns remain.
   normalized indexes.
 - `app/persistence/inventory_repository.py` is the sole concrete inventory SQL
   implementation.
+- `app/discovery/` owns immutable observation models, pure validation, discovery
+  exceptions, the repository protocol, and SQL-free `DiscoveryService`.
+- `app/persistence/discovery_schema.py` defines normalized schema version 3 and
+  documented history, filtering, and cleanup indexes.
+- `app/persistence/discovery_repository.py` is the sole concrete discovery SQL
+  implementation.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -92,6 +98,10 @@ version-enforcement, and documentation concerns remain.
   `tests/test_inventory_service.py` verify model invariants, validation, schema,
   indexes, filters, search, pagination, rollback, soft deletion, optimistic
   conflicts, service transitions, dependency injection, and safe logging.
+- `tests/test_discovery_domain.py`, `tests/test_discovery_repository.py`, and
+  `tests/test_discovery_service.py` verify collected-fact validation, lifecycle,
+  schema, indexes, history, search, pagination, rollback, retention, optimistic
+  conflicts, dependency injection, and safe logging.
 
 ## Modified
 
@@ -324,6 +334,39 @@ explicit cause is retained and exception context is suppressed.
 - Backup and restore errors do not include database contents or integrity output,
   and migration failures report only version and exception type.
 
+## Discovery domain self-review
+
+- **Architecture:** Discovery and inventory remain separate domains. Discovery
+  references inventory identity but neither its service nor repository imports or
+  mutates inventory. Promotion remains deliberately unimplemented and reserved
+  for `InventoryService`.
+- **Normalization:** Observations own normalized interfaces, addresses, disks,
+  services, packages, containers, processes, and namespaced metadata. Children
+  cascade only with their observation; inventory rows are never cascaded.
+- **Repository design:** The domain owns the protocol and only
+  `SQLiteDiscoveryRepository` executes discovery SQL. Writes are transactional,
+  values parameterized, pages bounded, lifecycle changes optimistic, and
+  collected facts immutable after insertion.
+- **Lifecycle and retention:** Legal transitions are pending to successful or
+  failed, then expired. Failed history retains its bounded reason after expiry.
+  Cleanup requires a UTC cutoff and deletes only expired observations.
+- **Security:** Models exclude credentials, command lines, and complete command
+  output. Credential-shaped metadata keys are rejected, metadata is bounded,
+  service logs include only component, server UUID,
+  operation, and counts, and repository exceptions expose no SQL parameters or
+  collected data.
+- **Scalability:** Latest/history, source, status, state/retention, address, child,
+  and metadata queries have documented indexes. Pagination is capped at 1,000;
+  metadata and collection duration are bounded where applicable. Child hydration
+  currently issues one query per child type per observation and should be measured
+  before high-volume use.
+
+Self-review found and fixed backward lifecycle timestamps, loss of failed reasons
+on expiry, duplicate normalized facts, invalid nested model acceptance,
+credential-shaped metadata acceptance, incomplete database lifecycle checks,
+mutable-fact replacement through repository updates, and unauthorized
+synchronization-state changes. No blocking discovery finding remains.
+
 # Technical Debt
 
 ## Configuration
@@ -356,6 +399,18 @@ explicit cause is retained and exception context is suppressed.
   policy, and optional migration checksums before the first stable release.
 - Add multi-process contention and crash-recovery integration tests on every
   supported deployment filesystem.
+
+## Discovery
+
+- Define promotion field ownership, provenance, merge/conflict policy, and audit
+  records before adding any `InventoryService` acceptance operation.
+- Define a production retention duration, scheduling owner, quotas, and legal or
+  operational preservation requirements before automating cleanup.
+- Batch child hydration across observation pages if representative workloads show
+  the current per-observation child queries are material.
+- Define source-specific collector schemas and metadata allowlists before SSH or
+  plugin collection is implemented.
+- Add bulk recording and cleanup limits before high-volume polling exists.
 
 ## SSH, plugins, and jobs
 
@@ -391,11 +446,11 @@ explicit cause is retained and exception context is suppressed.
 The implemented suite was run against CPython 3.12.13 with these results:
 
 ```text
-184 tests passed
-91.46% branch-aware coverage
+237 tests passed
+92.06% branch-aware coverage
 Ruff passed
 Python compilation passed
-Configuration, runtime, logging, persistence, inventory, startup, and concurrency tests passed
+Configuration, runtime, logging, persistence, inventory, discovery, startup, and concurrency tests passed
 Compose YAML structural parsing passed
 git diff --check passed
 ```
@@ -496,6 +551,14 @@ domain, and SQLite implementation details remain in `app.persistence`. The schem
 is normalized, indexed for implemented queries, foreign-key protected, soft-delete
 safe, and optimistic-concurrency aware. No SSH, polling, plugin, job, API, UI, or
 authorization behavior was added.
+
+The Discovery Domain preserves the same layering while keeping observations
+explicitly non-authoritative. Its immutable model, normalized schema, service
+lifecycle, bounded metadata, indexed history, optimistic updates, and expired-only
+cleanup are consistent with the approved design. Self-review regressions cover
+immutable collected facts and reserved synchronization authority. No collector,
+SSH, polling, plugin, job, interface, authentication, or authorization behavior
+was added.
 
 The repository-only persistence rule is documented in engineering policy,
 architecture, ADR-0006, repository contracts, and README guidance. An automated
