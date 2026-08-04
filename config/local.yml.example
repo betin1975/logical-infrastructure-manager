@@ -1,0 +1,10 @@
+# Copy this file to config/local.yml for machine-specific, non-secret settings.
+# Prefer environment variables or a future secret provider for credentials.
+
+app:
+  environment: development
+
+logging:
+  level: INFO
+  console_enabled: true
+  file_enabled: true

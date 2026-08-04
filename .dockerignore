@@ -1,0 +1,9 @@
+*
+!app/
+!app/**
+!config/
+!config/default.yml
+!requirements.txt
+
+**/__pycache__/
+**/*.py[codz]

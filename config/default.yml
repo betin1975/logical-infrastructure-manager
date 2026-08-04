@@ -1,0 +1,28 @@
+app:
+  name: Logical Infrastructure Manager
+  environment: development
+  debug: false
+
+paths:
+  runtime: runtime
+  data: runtime/data
+  logs: runtime/logs
+  backups: runtime/backups
+  jobs: runtime/jobs
+
+logging:
+  level: INFO
+  console_enabled: true
+  file_enabled: true
+  max_bytes: 10485760
+  backup_count: 5
+  format: >-
+    %(asctime)s %(levelname)s %(name)s component=%(component)s
+    correlation_id=%(correlation_id)s server_id=%(server_id)s
+    server_name=%(server_name)s job_id=%(job_id)s operation=%(operation)s
+    %(message)s
+  timestamp_format: "%Y-%m-%dT%H:%M:%S%z"
+
+ssh:
+  directory: ssh
+  known_hosts: ssh/known_hosts
