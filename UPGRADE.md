@@ -3,9 +3,15 @@
 LIM has not released a stable application or domain schema, so no supported
 production upgrade path exists yet. The persistence foundation now applies
 ordered internal migrations automatically during `python -m app`; the only
-current migrations create LIM's migration-history metadata and normalized server
-inventory schema. They do not create SSH, job, plugin, user, alert, or audit
-tables.
+current migrations create migration metadata, normalized authoritative inventory,
+and normalized discovery history. SSHManager adds configuration and mounted-file
+requirements but no database table. Job, plugin, user, alert, and audit tables do
+not exist.
+
+Existing development deployments must add the complete `ssh` configuration,
+provide separate read-only admin and monitor identities, and move application
+host trust to the configured runtime-data `known_hosts`. A historical writable
+`ssh/` mount is unsupported; do not copy private keys into runtime data.
 
 Before the first release, the project must define:
 

@@ -205,7 +205,7 @@ class ConfigurationManager:
         if not isinstance(config, Mapping):
             raise ConfigError("configuration root must be a mapping")
 
-        for key in ("app", "paths", "logging", "database"):
+        for key in ("app", "paths", "logging", "database", "ssh"):
             if key in config and not isinstance(config[key], Mapping):
                 raise ConfigError(f"configuration section {key!r} must be a mapping")
 

@@ -20,6 +20,8 @@ logging:
     %(asctime)s %(levelname)s %(name)s component=%(component)s
     correlation_id=%(correlation_id)s server_id=%(server_id)s
     server_name=%(server_name)s job_id=%(job_id)s operation=%(operation)s
+    username=%(username)s port=%(port)s identity=%(identity)s
+    trust_status=%(trust_status)s
     %(message)s
   timestamp_format: "%Y-%m-%dT%H:%M:%S%z"
 
@@ -36,5 +38,22 @@ database:
   backup_prefix: lim-backup
 
 ssh:
-  directory: ssh
-  known_hosts: ssh/known_hosts
+  credential_directory: ssh
+  admin_private_key: ssh/lim_admin_ed25519
+  monitor_private_key: ssh/monitor_ed25519
+  known_hosts: runtime/data/known_hosts
+  connect_timeout_seconds: 10
+  command_timeout_seconds: 60
+  max_stdout_bytes: 1048576
+  max_stderr_bytes: 262144
+  port: 22
+  strict_host_key_checking: true
+  authentication_methods:
+    - publickey
+  retry_count: 1
+  retry_delay_seconds: 1.0
+  keepalive_interval_seconds: 15
+  keepalive_count: 3
+  ssh_executable: /usr/bin/ssh
+  scp_executable: /usr/bin/scp
+  keyscan_executable: /usr/bin/ssh-keyscan

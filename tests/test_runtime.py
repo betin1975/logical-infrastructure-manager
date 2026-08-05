@@ -324,11 +324,26 @@ def test_application_startup_initializes_runtime(
             events.append("migrations applied")
             return FakeMigrationState()
 
+    class FakeSSHManager:
+        def __init__(
+            self,
+            config: object,
+            runtime: object,
+            logger: object,
+            *,
+            application_root: Path,
+        ) -> None:
+            events.extend(("ssh manager", config, runtime, logger, application_root))
+
+        def initialize(self) -> None:
+            events.append("ssh initialized")
+
     monkeypatch.setattr(app_main, "ConfigManager", lambda: fake_config)
     monkeypatch.setattr(app_main, "RuntimeManager", FakeRuntimeManager)
     monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
     monkeypatch.setattr(app_main, "DatabaseManager", FakeDatabaseManager)
     monkeypatch.setattr(app_main, "MigrationManager", FakeMigrationManager)
+    monkeypatch.setattr(app_main, "SSHManager", FakeSSHManager)
 
     assert app_main.main() == 0
     assert events[0] is fake_config
@@ -346,8 +361,19 @@ def test_application_startup_initializes_runtime(
     assert events[10] == "database initialized"
     assert isinstance(events[11], FakeDatabaseManager)
     assert events[12] == "migrations applied"
-    assert events[13] == (
-        "LIM startup foundation initialized with schema_version=%d",
+    assert events[13:16] == [
+        "ssh",
+        {"operation": "initialize"},
+        "ssh manager",
+    ]
+    assert events[16] is fake_config
+    assert isinstance(events[17], FakeRuntimeManager)
+    assert isinstance(events[18], FakeLogger)
+    assert events[19] == Path(app_main.__file__).resolve().parent.parent
+    assert events[20] == "ssh initialized"
+    assert events[21] == (
+        "LIM startup foundation initialized with schema_version=%d "
+        "ssh_initialized=true",
         (1,),
     )
 

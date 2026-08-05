@@ -200,12 +200,17 @@ public objects.
 ## SSH and remote execution
 
 - `SSHManager` is the sole gateway for SSH behavior.
-- Strict host-key verification is the default. Trust-on-first-use, if ever
-  supported, must be explicit, audited, and configurable.
+- Strict host-key verification is mandatory. Automatic trust-on-first-use is
+  forbidden; new or changed trust requires an explicit fingerprint-confirmed
+  operation against a freshly presented public key.
 - Enforce connect, command, and idle timeouts. Bound captured output.
 - Prefer key or agent authentication. Never persist plaintext passwords.
 - Treat remote command arguments as untrusted and avoid shell interpolation.
 - Record auditable metadata without recording secrets or sensitive output.
+- Only `app.ssh` may import subprocess for OpenSSH, invoke SSH/SCP/key tools,
+  inspect host keys, or modify application `known_hosts`.
+- Keep private identities read-only and separate from writable trust data. Never
+  generate, overwrite, copy, log, or return private-key contents.
 
 ## Plugins and jobs
 

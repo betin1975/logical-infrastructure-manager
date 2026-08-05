@@ -581,8 +581,16 @@ def test_application_startup_creates_migrated_database_idempotently(
         def get_logger(self, component: str, **context: object) -> FakeLogger:
             return FakeLogger()
 
+    class FakeSSHManager:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def initialize(self) -> None:
+            pass
+
     monkeypatch.setattr(app_main, "ConfigManager", lambda: stack.config)
     monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
+    monkeypatch.setattr(app_main, "SSHManager", FakeSSHManager)
 
     assert app_main.main() == 0
     assert app_main.main() == 0
@@ -592,11 +600,13 @@ def test_application_startup_creates_migrated_database_idempotently(
     assert MigrationManager(database).schema_version() == LATEST_SCHEMA_VERSION
     assert log_events == [
         (
-            "LIM startup foundation initialized with schema_version=%d",
+            "LIM startup foundation initialized with schema_version=%d "
+            "ssh_initialized=true",
             (LATEST_SCHEMA_VERSION,),
         ),
         (
-            "LIM startup foundation initialized with schema_version=%d",
+            "LIM startup foundation initialized with schema_version=%d "
+            "ssh_initialized=true",
             (LATEST_SCHEMA_VERSION,),
         ),
     ]

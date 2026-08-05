@@ -170,3 +170,52 @@ adding a new ADR that explicitly supersedes it; accepted history is not rewritte
 - **Consequences:** Promotion is deliberately not implemented in this foundation.
   Its future design must define field ownership, conflicts, audit records, and
   retries before adding behavior.
+
+## ADR-0014: SSHManager is the sole SSH implementation
+
+- **Status:** Accepted
+- **Context:** Multiple SSH clients would scatter trust, credential, timeout,
+  output, retry, and audit policy.
+- **Decision:** Only `app.ssh.SSHManager` may inspect host keys, modify LIM trust,
+  execute SSH commands, or transfer files. It returns typed facts and never
+  imports persistence or mutates Inventory or Discovery.
+- **Consequences:** Jobs, collectors, plugins, and interfaces must receive this
+  boundary. Architecture tests reject subprocess/OpenSSH ownership elsewhere.
+
+## ADR-0015: LIM uses system OpenSSH with structured commands
+
+- **Status:** Accepted
+- **Context:** The supported platforms already provide a mature OpenSSH client;
+  adding a Python SSH library would expand dependency and security surface.
+- **Decision:** LIM invokes explicitly configured `ssh`, `scp`, and `ssh-keyscan`
+  executables through argument arrays and never a local shell. Remote commands are
+  executable/argument tuples whose values are individually POSIX-quoted for the
+  OpenSSH remote-shell protocol. Arbitrary shell text is unsupported.
+- **Consequences:** Images install `openssh-client`. Output is drained and bounded,
+  processes have a minimal environment and separate session, and only explicitly
+  transient connection failures are retried.
+
+## ADR-0016: Host trust is strict and application-owned
+
+- **Status:** Accepted
+- **Context:** Personal known-hosts and automatic trust-on-first-use are neither
+  deterministic nor safe for unattended infrastructure management.
+- **Decision:** Strict host verification is mandatory against LIM's isolated
+  runtime `known_hosts`. Automatic trust is forbidden. New and replacement trust
+  require an explicit operation, a freshly scanned key, and matching SHA256
+  fingerprint confirmation.
+- **Consequences:** Unknown and changed keys fail closed. Atomic updates and
+  post-write rescans prevent corruption and detect replacement races. Diagnostics
+  never alter trust.
+
+## ADR-0017: Private identities and writable trust are separated
+
+- **Status:** Accepted
+- **Context:** A writable credential mount would allow accidental or compromised
+  code to overwrite authentication material.
+- **Decision:** Admin and monitor private keys are separately mounted read-only,
+  validated beneath an approved credential root, and referenced only by enum.
+  Application trust is a separate writable mode `0600` runtime file.
+- **Consequences:** LIM does not generate, copy, rotate, return, or log private
+  keys. Compose uses individual read-only mounts and has no broad writable SSH
+  mount; host files must already have secure ownership and mode.

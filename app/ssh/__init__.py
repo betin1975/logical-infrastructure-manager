@@ -1,0 +1,58 @@
+"""Intentional public API for LIM's sole SSH subsystem."""
+
+from .exceptions import (
+    SSHConfigurationError,
+    SSHExecutableError,
+    SSHFingerprintMismatchError,
+    SSHHostKeyChangedError,
+    SSHHostNotTrustedError,
+    SSHIdentityError,
+    SSHLocalProcessError,
+    SSHManagerError,
+    SSHTrustStoreError,
+    SSHValidationError,
+)
+from .manager import SSHManager, SSHSettings
+from .models import (
+    SSHAuthenticationMethod,
+    SSHCommandRequest,
+    SSHCommandResult,
+    SSHConnectionTarget,
+    SSHDiagnosticResult,
+    SSHFailureType,
+    SSHFileTransferRequest,
+    SSHFileTransferResult,
+    SSHHostKey,
+    SSHIdentity,
+    SSHTransferDirection,
+    SSHTrustResult,
+    SSHTrustStatus,
+)
+
+__all__ = [
+    "SSHAuthenticationMethod",
+    "SSHCommandRequest",
+    "SSHCommandResult",
+    "SSHConfigurationError",
+    "SSHConnectionTarget",
+    "SSHDiagnosticResult",
+    "SSHExecutableError",
+    "SSHFailureType",
+    "SSHFileTransferRequest",
+    "SSHFileTransferResult",
+    "SSHFingerprintMismatchError",
+    "SSHHostKey",
+    "SSHHostKeyChangedError",
+    "SSHHostNotTrustedError",
+    "SSHIdentity",
+    "SSHIdentityError",
+    "SSHLocalProcessError",
+    "SSHManager",
+    "SSHManagerError",
+    "SSHSettings",
+    "SSHTransferDirection",
+    "SSHTrustResult",
+    "SSHTrustStatus",
+    "SSHTrustStoreError",
+    "SSHValidationError",
+]

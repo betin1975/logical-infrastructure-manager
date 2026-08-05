@@ -46,6 +46,13 @@ after its first release.
   keys, and documented query indexes.
 - SQLite discovery repository with latest/history lookup, filtering, search,
   pagination, optimistic lifecycle transitions, and atomic cleanup.
+- Sole system-OpenSSH `SSHManager` with structured commands, strict isolated host
+  trust, read-only identity validation, bounded output, safe failure
+  classification, transient-only retries, diagnostics, and single-file transfer.
+- Atomic fingerprint-confirmed host trust operations with unknown, trusted,
+  changed, and unreachable states; automatic trust-on-first-use is forbidden.
+- Container OpenSSH client and separate read-only admin/monitor key mounts without
+  a broad writable SSH mount.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.

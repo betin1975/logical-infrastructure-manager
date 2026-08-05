@@ -7,6 +7,7 @@ from .config import ConfigError, ConfigManager
 from .logging_manager import LoggingManager, LoggingManagerError
 from .persistence import DatabaseManager, MigrationManager, PersistenceError
 from .runtime import RuntimeManager, RuntimeManagerError
+from .ssh import SSHManager, SSHManagerError
 
 
 def main() -> int:
@@ -36,8 +37,21 @@ def main() -> int:
         logger.exception("LIM persistence initialization failed")
         return 1
 
+    try:
+        ssh_manager = SSHManager(
+            config,
+            runtime,
+            logging_manager.get_logger("ssh", operation="initialize"),
+            application_root=application_root,
+        )
+        ssh_manager.initialize()
+    except SSHManagerError:
+        logger.exception("LIM SSH foundation initialization failed")
+        return 1
+
     logger.info(
-        "LIM startup foundation initialized with schema_version=%d",
+        "LIM startup foundation initialized with schema_version=%d "
+        "ssh_initialized=true",
         migration_state.schema_version,
     )
     return 0

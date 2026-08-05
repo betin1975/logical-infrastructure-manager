@@ -24,7 +24,8 @@ DEFAULT_LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s component=%(component)s "
     "correlation_id=%(correlation_id)s server_id=%(server_id)s "
     "server_name=%(server_name)s job_id=%(job_id)s "
-    "operation=%(operation)s %(message)s"
+    "operation=%(operation)s username=%(username)s port=%(port)s "
+    "identity=%(identity)s trust_status=%(trust_status)s %(message)s"
 )
 
 
@@ -252,6 +253,10 @@ def test_bound_logger_adds_server_job_and_correlation_context(
         job_id="job-9",
         operation="inspect",
         correlation_id="correlation-42",
+        username="lim_monitor",
+        port=22,
+        identity="monitor",
+        trust_status="trusted",
     )
     logger.warning("context event", extra={"job_id": "call-job-10"})
     fixture.flush()
@@ -262,6 +267,10 @@ def test_bound_logger_adds_server_job_and_correlation_context(
     assert "job_id=call-job-10" in output
     assert "operation=inspect" in output
     assert "correlation_id=correlation-42" in output
+    assert "username=lim_monitor" in output
+    assert "port=22" in output
+    assert "identity=monitor" in output
+    assert "trust_status=trusted" in output
 
 
 def test_nested_messages_context_configuration_and_environment_are_redacted(
@@ -283,9 +292,7 @@ def test_nested_messages_context_configuration_and_environment_are_redacted(
         server_name="token=context-token-012",
     )
     private_key = (
-        "-----BEGIN PRIVATE KEY-----\n"
-        "private-key-material\n"
-        "-----END PRIVATE KEY-----"
+        "-----BEGIN PRIVATE KEY-----\nprivate-key-material\n-----END PRIVATE KEY-----"
     )
 
     logger.info(

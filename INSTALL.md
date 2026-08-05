@@ -40,6 +40,20 @@ idempotent. The default log rotation is 10 MiB with five backups. Override
 logging or SQLite policies through `config/local.yml` or `LIM_...` environment
 variables; never place credentials in configuration.
 
+Startup also validates the local SSH foundation without contacting a host. Supply
+existing admin and monitor private keys at the configured paths; LIM does not
+generate them. They must be regular non-symlink files contained by the configured
+credential directory and read-only to the LIM process:
+
+```shell
+chmod 0400 ssh/lim_admin_ed25519 ssh/monitor_ed25519
+```
+
+The configured `ssh`, `scp`, and `ssh-keyscan` executables must exist and be
+executable. LIM creates `runtime/data/known_hosts` mode `0600`; do not point it at
+an operator's personal trust file. Remote trust is added only through explicit
+fingerprint-confirmed SSHManager operations.
+
 Database and backup files use mode `0600`. Back up through the Python
 `BackupManager` API so WAL state is copied consistently; never copy a live SQLite
 file directly. Restore validation does not replace the active database. Production
@@ -61,8 +75,11 @@ docker compose build
 docker compose run --rm lim
 ```
 
-The bind-mounted `runtime/` and `ssh/` directories must be writable by container
-UID/GID `10001` on Linux hosts. Do not add SSH credentials to an image.
+The bind-mounted `runtime/` directory must be writable by container UID/GID
+`10001` on Linux hosts. The two key files must be owned by or otherwise readable
+only by UID `10001` and have mode `0400`; Compose mounts each file individually
+and read-only. It does not mount the SSH directory writable. Do not add SSH
+credentials to an image.
 
 ## Production status
 

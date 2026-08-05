@@ -74,6 +74,8 @@ version-enforcement, and documentation concerns remain.
   documented history, filtering, and cleanup indexes.
 - `app/persistence/discovery_repository.py` is the sole concrete discovery SQL
   implementation.
+- `app/ssh/` owns typed SSH inputs/results, validation, bounded OpenSSH process
+  execution, atomic host trust, diagnostics, transfer, and the sole SSHManager.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -102,6 +104,10 @@ version-enforcement, and documentation concerns remain.
   `tests/test_discovery_service.py` verify collected-fact validation, lifecycle,
   schema, indexes, history, search, pagination, rollback, retention, optimistic
   conflicts, dependency injection, and safe logging.
+- `tests/test_ssh.py` verifies initialization, private-key security, trust
+  inspection and mutation, fingerprint races, bounded commands, classification,
+  retries, transfers, diagnostics, cancellation, and safe logging without a
+  network or operator credential.
 
 ## Modified
 
@@ -367,6 +373,41 @@ credential-shaped metadata acceptance, incomplete database lifecycle checks,
 mutable-fact replacement through repository updates, and unauthorized
 synchronization-state changes. No blocking discovery finding remains.
 
+## SSHManager security self-review
+
+- **Command injection:** Local execution uses an argument array with
+  `shell=False`. Hosts, usernames, ports, commands, and transfer paths are
+  validated. Remote executable/argument tuples are independently POSIX-quoted;
+  arbitrary shell text is not exposed.
+- **Trust:** Strict application-owned trust is always enabled. Unknown and changed
+  keys remain untrusted. New/replacement trust requires a fresh presented key and
+  matching fingerprint, uses atomic replacement, and rescans after writing;
+  changed-during-confirmation trust is rolled back.
+- **Credentials and paths:** Admin and monitor identities are enum-selected,
+  contained by the credential root, regular, non-symlinked, and mode `0400`.
+  Known hosts is separately writable under runtime data, rejects symlinks and
+  writable parents, and is mode `0600`.
+- **Processes and resources:** OpenSSH processes receive null stdin, a minimal
+  environment, closed descriptors, a new session, time/cancellation enforcement,
+  process-group termination, and concurrent bounded stdout/stderr draining.
+- **Retries:** Only connection refusal and connection timeout are retried within a
+  configured bound. Authentication, DNS, trust, command timeout, cancellation,
+  output limits, local failures, and remote nonzero exits are not retried.
+- **Secrets and logging:** Results never contain private-key contents. Identity and
+  trust-store paths are removed from stderr. Logs contain structured target,
+  identity, trust, timing, exit, and classification metadata but no command,
+  output, transferred contents, credentials, or fingerprints.
+- **Architecture:** SSHManager imports no SQLite, persistence, inventory, or
+  discovery service. Architecture tests confine subprocess ownership to
+  `app.ssh.command` and direct SSH-tool invocation to `app.ssh`.
+
+Self-review fixed unsupported SSH logging context, descendant-process leakage on
+timeout, an incorrect remote-command separator, missing hard resource ceilings,
+host-key replacement race rollback, malformed scan decoding, unsafe trust-parent
+permissions, post-initialization trust-path substitution, cancellation-hook
+failure cleanup, unused configured default port, and container credential mount
+ownership. No blocking SSH or application-security finding remains.
+
 # Technical Debt
 
 ## Configuration
@@ -414,8 +455,12 @@ synchronization-state changes. No blocking discovery finding remains.
 
 ## SSH, plugins, and jobs
 
-- Define and implement the sole `SSHManager`, including strict host verification,
-  credential references, timeouts, cancellation, output bounds, and audit data.
+- Add Windows-specific process termination only if Windows becomes a supported
+  runtime; the current implementation intentionally targets POSIX OpenSSH.
+- Define identity rotation, external secret-provider integration, host-key audit
+  persistence, and multi-process trust locking before production deployment.
+- Add end-to-end tests against disposable OpenSSH containers when CI provides
+  Docker, without using production keys or infrastructure.
 - Define a versioned plugin manifest and typed contract before implementing any
   provider plugin.
 - Define durable job states, legal transitions, recovery, idempotency, retries,
@@ -446,11 +491,11 @@ synchronization-state changes. No blocking discovery finding remains.
 The implemented suite was run against CPython 3.12.13 with these results:
 
 ```text
-237 tests passed
-92.06% branch-aware coverage
+292 tests passed
+91.77% branch-aware coverage
 Ruff passed
 Python compilation passed
-Configuration, runtime, logging, persistence, inventory, discovery, startup, and concurrency tests passed
+Configuration, runtime, logging, persistence, inventory, discovery, SSH, startup, container-layout, and concurrency tests passed
 Compose YAML structural parsing passed
 git diff --check passed
 ```
@@ -559,6 +604,16 @@ cleanup are consistent with the approved design. Self-review regressions cover
 immutable collected facts and reserved synchronization authority. No collector,
 SSH, polling, plugin, job, interface, authentication, or authorization behavior
 was added.
+
+The SSHManager foundation is the sole remote-access implementation and remains
+fully outside persistence and domain mutation. It uses strict isolated trust,
+read-only identities, bounded environment-independent OpenSSH processes,
+structured command arguments, typed safe results, explicit fingerprint-confirmed
+trust, conservative retries, and non-mutating diagnostics. Security review found
+no remaining command-injection, silent-trust, writable-key, symlink, unbounded
+output, unsafe-retry, or secret-logging blocker. No polling, collection,
+bootstrap automation, job, plugin, API, dashboard, authentication, or RBAC feature
+was introduced.
 
 The repository-only persistence rule is documented in engineering policy,
 architecture, ADR-0006, repository contracts, and README guidance. An automated

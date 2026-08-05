@@ -17,6 +17,10 @@ WORKDIR /opt/lim
 RUN groupadd --gid 10001 lim \
     && useradd --uid 10001 --gid lim --no-create-home --shell /usr/sbin/nologin lim
 
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN python -m pip install --requirement requirements.txt
 
@@ -24,9 +28,11 @@ COPY --chown=lim:lim app ./app
 COPY --chown=lim:lim config/default.yml ./config/default.yml
 
 RUN mkdir -p runtime/data runtime/jobs runtime/logs runtime/backups ssh \
-    && chown -R lim:lim runtime ssh
+    && chown -R lim:lim runtime \
+    && chown root:lim ssh \
+    && chmod 0750 ssh
 
 USER lim
 
-# One-shot startup initializes config, runtime, logging, SQLite, and migrations.
+# One-shot startup validates local SSH configuration without network access.
 CMD ["python", "-m", "app"]

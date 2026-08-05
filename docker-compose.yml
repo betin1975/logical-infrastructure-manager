@@ -13,7 +13,14 @@ services:
       LIM_APP__ENVIRONMENT: container
     volumes:
       - ./runtime:/opt/lim/runtime
-      - ./ssh:/opt/lim/ssh
+      - type: bind
+        source: ./ssh/lim_admin_ed25519
+        target: /opt/lim/ssh/lim_admin_ed25519
+        read_only: true
+      - type: bind
+        source: ./ssh/monitor_ed25519
+        target: /opt/lim/ssh/monitor_ed25519
+        read_only: true
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777

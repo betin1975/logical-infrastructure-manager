@@ -6,8 +6,9 @@ automation through controlled SSH access, durable jobs, and provider plugins.
 
 > **Project status:** foundation development. Configuration, runtime, centralized
 > logging, SQLite persistence, authoritative server inventory, and discovery
-> observation history are implemented and tested. SSH, plugins, polling, jobs, and user-facing interfaces
-> remain planned; they are not production features yet.
+> observation history, and the secure SSHManager foundation are implemented and
+> tested. Plugins, polling, jobs, and user-facing interfaces remain planned; they
+> are not production features yet.
 
 ## Design principles
 
@@ -28,6 +29,7 @@ and [AI_DEVELOPER.md](AI_DEVELOPER.md) for permanent contribution rules.
 - CPython 3.12
 - `pip` and `venv`
 - Docker with Compose v2, optionally
+- System OpenSSH client tools (`ssh`, `scp`, and `ssh-keyscan`)
 
 ## Development setup
 
@@ -223,6 +225,43 @@ inventory server UUIDs. Discovery never updates inventory. A future promotion
 workflow must call `InventoryService`, which remains the only authority allowed
 to accept observed facts into inventory.
 
+## SSHManager
+
+`app.ssh.SSHManager` is LIM's only SSH, host-key inspection, and file-transfer
+implementation. It uses explicitly configured system OpenSSH executables without
+`shell=True`, disables personal SSH configuration, password and interactive
+authentication, and applies these options to every connection:
+
+```text
+BatchMode=yes
+IdentitiesOnly=yes
+StrictHostKeyChecking=yes
+UserKnownHostsFile=<runtime data>/known_hosts
+GlobalKnownHostsFile=/dev/null
+PasswordAuthentication=no
+KbdInteractiveAuthentication=no
+PreferredAuthentications=publickey
+```
+
+Administrative and monitor identities are safe enum references, not caller-owned
+paths. Their files must be regular, non-symlinked, contained in the configured
+credential root, mode `0400`, and read-only. LIM never generates or modifies
+private keys. Application host trust is stored separately in the configured
+runtime data directory, mode `0600`, and updated through atomic replacement.
+
+Trust is never created automatically. `inspect_host_key()` reports `UNKNOWN`,
+`TRUSTED`, `CHANGED`, or `UNREACHABLE`; `trust_host_key()` and
+`replace_host_key()` require a fingerprint that matches a fresh presented public
+key. Diagnostics do not modify trust.
+
+Remote commands are tuples consisting of one executable followed by arguments.
+SSHManager validates each value and independently POSIX-quotes it for OpenSSH's
+remote-shell protocol. There is no arbitrary shell-text API. Output is drained
+while the process runs, retained only up to configured stdout/stderr byte limits,
+and returned with truncation and failure classifications. Only connection refusal
+and connection timeout are retried; authentication, trust, command timeout, output
+limits, and remote nonzero exits are never automatically retried.
+
 ## Tests and quality checks
 
 Run the complete local validation suite before submitting changes:
@@ -245,10 +284,12 @@ docker compose build
 docker compose run --rm lim
 ```
 
-The image runs as a non-root user, excludes secrets and runtime state from its
-build context, and uses read-only container filesystems with explicit runtime
-mounts. There is deliberately no port or health check until LIM has an approved
-long-running interface.
+The image runs as a non-root user, installs the OpenSSH client, excludes secrets
+and runtime state from its build context, and uses a read-only root filesystem.
+Compose mounts admin and monitor keys as separate read-only files while
+`runtime/` remains writable for application-owned `known_hosts`, SQLite, logs,
+and backups. There is no broad writable SSH mount. There is deliberately no port
+or health check until LIM has an approved long-running interface.
 
 ## Repository layout
 

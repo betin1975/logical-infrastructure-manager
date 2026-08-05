@@ -232,25 +232,49 @@ explicit cutoff; automatic scheduling and retention policy remain future work.
 
 ## SSH
 
-`SSHManager` will be the only implementation allowed to create SSH connections,
+`SSHManager` is the only implementation allowed to create SSH connections,
 execute remote commands, or transfer files. Jobs and plugins request remote
 operations through its interface and never import an SSH library directly.
-`SSHManager` receives application-facing services when persistence is needed; it
-never imports SQLite, accesses `DatabaseManager`, or executes SQL.
+It returns typed facts and never receives InventoryService, DiscoveryService,
+SQLite, repositories, or persistence managers.
 
-The manager will own:
+The implemented system-OpenSSH boundary owns:
 
-- Connection lifecycle and bounded pooling.
-- Strict known-host verification and trust policy.
+- Explicit argument-array process execution with no local shell.
+- Mandatory strict host verification against application-owned trust.
 - Authentication adapters without plaintext credential persistence.
 - Connect, command, idle, and shutdown timeouts.
 - Output size limits, decoding, and structured command results.
-- Cancellation and cleanup.
+- Future-compatible cancellation and process-group cleanup.
 - Auditable metadata with secret redaction.
 
-SSH configuration and trust material live under configured paths. The `ssh/`
-working directory is runtime state and is excluded from images and version
-control except for its placeholder.
+`OpenSSHProcessRunner` is the only application code importing `subprocess`. It
+uses a minimal locale-only environment, closed file descriptors, null stdin,
+separate process sessions, concurrent output draining, and configured byte/time
+limits. Executable paths are explicit and validated; personal SSH configuration,
+personal known-hosts, password authentication, keyboard-interactive
+authentication, agent identity selection, and trust-on-first-use are disabled.
+
+Structured remote commands are an executable plus an argument tuple. Each item is
+validated and independently POSIX-quoted because the OpenSSH wire protocol passes
+one command string to a remote shell. No arbitrary shell-text API exists. SCP is
+limited to one explicit regular file and safe absolute remote paths; recursive
+transfer and permission escalation are absent.
+
+The admin and monitor identity files live beneath a configured credential root,
+must be non-symlink regular files with no owner-write, group, or world bits, and
+are never copied or modified. Application `known_hosts` is a separate mode `0600`
+file directly beneath runtime data. `SSHTrustStore` scans public keys, calculates
+SHA256 fingerprints, detects unknown/changed/multiple key types, and uses locked,
+fsynced atomic replacement. New and changed trust require explicit methods and a
+fresh matching fingerprint; post-write confirmation rolls back a racing change.
+
+Commands return bounded stdout/stderr, return code, UTC timestamps, duration,
+timeout and truncation flags, attempt count, correlation ID, and a typed failure.
+Only connection refusal and connection timeout are transiently retried. Trust,
+authentication, DNS, cancellation, command timeout, output-limit, local-process,
+and remote nonzero failures are never automatically retried. Diagnostics inspect
+trust without mutation and attempt monitor authentication only for a trusted host.
 
 ## Plugins
 

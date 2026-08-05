@@ -28,6 +28,10 @@ CONTEXT_FIELDS = (
     "job_id",
     "operation",
     "correlation_id",
+    "username",
+    "port",
+    "identity",
+    "trust_status",
 )
 _SENSITIVE_TERMS = (
     "password",

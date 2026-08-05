@@ -15,3 +15,9 @@ database:
   connection_timeout_seconds: 5.0
   journal_mode: WAL
   synchronous_mode: NORMAL
+
+# SSH credential paths may be overridden, but key material never belongs here.
+# The configured files must be mounted read-only.
+# ssh:
+#   admin_private_key: /run/secrets/lim_admin_ed25519
+#   monitor_private_key: /run/secrets/monitor_ed25519
