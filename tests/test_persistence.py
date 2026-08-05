@@ -7,11 +7,13 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 import app.__main__ as app_main
+from app.composition import CompositionError
 from app.persistence import (
     INTERNAL_MIGRATIONS,
     MIGRATION_TABLE,
@@ -21,11 +23,9 @@ from app.persistence import (
     DatabaseConfigurationError,
     DatabaseConnectionError,
     DatabaseInitializationError,
-    DatabaseManager,
     Migration,
     MigrationError,
     MigrationManager,
-    PersistenceError,
     Repository,
     RestoreValidationError,
     TransactionError,
@@ -558,63 +558,36 @@ def test_wal_reader_sees_committed_snapshot_during_writer(tmp_path: Path) -> Non
 
 
 def test_application_startup_creates_migrated_database_idempotently(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stack = create_stack(tmp_path, initialize_database=False)
     log_events: list[tuple[str, tuple[object, ...]]] = []
 
     class FakeLogger:
         def info(self, message: str, *args: object) -> None:
             log_events.append((message, args))
 
-        def exception(self, message: str) -> None:
-            log_events.append((message, ()))
-
     class FakeLoggingManager:
-        def __init__(self, config: object, runtime: object) -> None:
-            pass
-
-        def initialize(self) -> None:
-            pass
-
         def get_logger(self, component: str, **context: object) -> FakeLogger:
             return FakeLogger()
 
-    class FakeSSHManager:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def initialize(self) -> None:
-            pass
-
-    class FakeBootstrapService:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def initialize(self) -> None:
-            pass
-
-    monkeypatch.setattr(app_main, "ConfigManager", lambda: stack.config)
-    monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
-    monkeypatch.setattr(app_main, "SSHManager", FakeSSHManager)
-    monkeypatch.setattr(app_main, "BootstrapService", FakeBootstrapService)
+    services = SimpleNamespace(
+        logging_manager=FakeLoggingManager(),
+        migration_state=SimpleNamespace(schema_version=LATEST_SCHEMA_VERSION),
+    )
+    monkeypatch.setattr(app_main, "build_application_services", lambda: services)
 
     assert app_main.main() == 0
     assert app_main.main() == 0
 
-    database = DatabaseManager(stack.config, stack.runtime)
-    database.initialize()
-    assert MigrationManager(database).schema_version() == LATEST_SCHEMA_VERSION
     assert log_events == [
         (
             "LIM startup foundation initialized with schema_version=%d "
-            "ssh_initialized=true bootstrap_initialized=true",
+            "ssh_initialized=true bootstrap_initialized=true polling_initialized=true",
             (LATEST_SCHEMA_VERSION,),
         ),
         (
             "LIM startup foundation initialized with schema_version=%d "
-            "ssh_initialized=true bootstrap_initialized=true",
+            "ssh_initialized=true bootstrap_initialized=true polling_initialized=true",
             (LATEST_SCHEMA_VERSION,),
         ),
     ]
@@ -623,41 +596,12 @@ def test_application_startup_creates_migrated_database_idempotently(
 
 def test_application_startup_logs_redacted_persistence_failure(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    events: list[str] = []
+    def fail_composition() -> None:
+        raise CompositionError("persistence")
 
-    class FakeRuntime:
-        def __init__(self, config: object, *, application_root: Path) -> None:
-            pass
-
-        def initialize(self) -> None:
-            pass
-
-    class FakeLogger:
-        def exception(self, message: str) -> None:
-            events.append(message)
-
-    class FakeLogging:
-        def __init__(self, config: object, runtime: object) -> None:
-            pass
-
-        def initialize(self) -> None:
-            pass
-
-        def get_logger(self, component: str, **context: object) -> FakeLogger:
-            return FakeLogger()
-
-    class FailingDatabase:
-        def __init__(self, config: object, runtime: object) -> None:
-            pass
-
-        def initialize(self) -> None:
-            raise PersistenceError("password=database-secret")
-
-    monkeypatch.setattr(app_main, "ConfigManager", object)
-    monkeypatch.setattr(app_main, "RuntimeManager", FakeRuntime)
-    monkeypatch.setattr(app_main, "LoggingManager", FakeLogging)
-    monkeypatch.setattr(app_main, "DatabaseManager", FailingDatabase)
+    monkeypatch.setattr(app_main, "build_application_services", fail_composition)
 
     assert app_main.main() == 1
-    assert events == ["LIM persistence initialization failed"]
+    assert capsys.readouterr().err == "LIM startup failed during persistence\n"

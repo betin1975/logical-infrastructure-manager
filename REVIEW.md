@@ -940,3 +940,33 @@ tests cover both fixes.
 No blocking security finding from this review remains. The documented
 Docker/configuration and policy-enforcement concerns remain non-blocking review
 items and should be handled in deliberately scoped follow-up work.
+
+## Minimal CLI self-review
+
+- **Architecture:** `app.cli` is a thin argparse adapter over the composed
+  InventoryService, SSHManager, BootstrapService, and PollingService. It imports
+  no SQLite, subprocess, concrete repository, SSH process runner, scheduler, job,
+  plugin, REST, or dashboard implementation. `app.composition` is the neutral
+  composition root shared by startup and CLI and returns a frozen
+  `ApplicationServices` dependency container; it is neither global nor mutable.
+- **Commands implemented:** `server add`, `server list`, `server show`, `trust
+  inspect`, `trust add`, `bootstrap`, and `poll`. Server references resolve by
+  hostname or UUID through new read-only InventoryService methods that delegate
+  to the existing repository interface. `server add --user` stores the approved
+  administrative username as inventory metadata; the CLI accepts no password.
+- **Output security:** commands emit bounded status, inventory identifiers, and
+  public host-key fingerprints only. They never print private keys, public-key
+  bodies, credentials, authorized-key contents, collector JSON, or raw SSH
+  stdout/stderr. Operational exceptions map to fixed safe messages and nonzero
+  exit codes.
+- **Tests run:** targeted CLI, composition, InventoryService, architecture,
+  startup, runtime, and persistence tests completed with `100 passed`. Scoped
+  Ruff checks for every modified Python file passed.
+- **Remaining limitations:** the CLI intentionally has no interactive prompts,
+  password authentication, trust replacement command, pagination flags, machine-
+  readable output, update/delete commands, scheduler, durable jobs, API,
+  dashboard, plugins, shell completion, or operator authorization layer. Those
+  require separately approved designs.
+- **Blocking issues:** none found. The CLI preserves service ownership and the
+  reusable composition performs local initialization only; network operations
+  occur solely when an operator explicitly invokes trust, bootstrap, or poll.

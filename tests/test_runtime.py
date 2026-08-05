@@ -1,13 +1,14 @@
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import app.__main__ as app_main
 import app.runtime as runtime_module
-from app.config import ConfigError, ConfigurationManager
-from app.logging_manager import LoggingManagerError
+from app.composition import CompositionError
+from app.config import ConfigurationManager
 from app.runtime import RuntimeManager, RuntimeManagerError, RuntimePaths
 from tests.helpers import write_yaml
 
@@ -278,173 +279,56 @@ def test_helper_methods_reject_unsafe_names(
 def test_application_startup_initializes_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    events: list[object] = []
-    fake_config = object()
-
-    class FakeRuntimeManager:
-        def __init__(self, config: object, *, application_root: Path) -> None:
-            events.extend((config, application_root))
-
-        def initialize(self) -> None:
-            events.append("initialized")
+    events: list[tuple[str, tuple[object, ...]]] = []
 
     class FakeLogger:
         def info(self, message: str, *args: object) -> None:
             events.append((message, args))
 
-        def exception(self, message: str) -> None:
-            events.append(message)
-
     class FakeLoggingManager:
-        def __init__(self, config: object, runtime: object) -> None:
-            events.extend((config, runtime))
-
-        def initialize(self) -> None:
-            events.append("logging initialized")
-
-        def get_logger(self, component: str, **context: str) -> FakeLogger:
-            events.extend((component, context))
+        def get_logger(self, component: str, **context: object) -> FakeLogger:
+            assert component == "bootstrap"
+            assert context == {"operation": "startup"}
             return FakeLogger()
 
-    class FakeDatabaseManager:
-        def __init__(self, config: object, runtime: object) -> None:
-            events.extend((config, runtime))
-
-        def initialize(self) -> None:
-            events.append("database initialized")
-
-    class FakeMigrationState:
-        schema_version = 1
-
-    class FakeMigrationManager:
-        def __init__(self, database: object) -> None:
-            events.append(database)
-
-        def apply_pending(self) -> FakeMigrationState:
-            events.append("migrations applied")
-            return FakeMigrationState()
-
-    class FakeSSHManager:
-        def __init__(
-            self,
-            config: object,
-            runtime: object,
-            logger: object,
-            *,
-            application_root: Path,
-        ) -> None:
-            events.extend(("ssh manager", config, runtime, logger, application_root))
-
-        def initialize(self) -> None:
-            events.append("ssh initialized")
-
-    class FakeTransactionManager:
-        def __init__(self, database: object) -> None:
-            events.append("transactions initialized")
-
-    class FakeInventoryRepository:
-        def __init__(self, database: object, transactions: object) -> None:
-            events.append("inventory repository initialized")
-
-    class FakeInventoryService:
-        def __init__(self, repository: object, logger: object) -> None:
-            events.append("inventory service initialized")
-
-    class FakeBootstrapService:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            events.append("bootstrap service constructed")
-
-        def initialize(self) -> None:
-            events.append("bootstrap service initialized")
-
-    monkeypatch.setattr(app_main, "ConfigManager", lambda: fake_config)
-    monkeypatch.setattr(app_main, "RuntimeManager", FakeRuntimeManager)
-    monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
-    monkeypatch.setattr(app_main, "DatabaseManager", FakeDatabaseManager)
-    monkeypatch.setattr(app_main, "MigrationManager", FakeMigrationManager)
-    monkeypatch.setattr(app_main, "SSHManager", FakeSSHManager)
-    monkeypatch.setattr(app_main, "TransactionManager", FakeTransactionManager)
-    monkeypatch.setattr(app_main, "SQLiteInventoryRepository", FakeInventoryRepository)
-    monkeypatch.setattr(app_main, "InventoryService", FakeInventoryService)
-    monkeypatch.setattr(app_main, "BootstrapService", FakeBootstrapService)
+    services = SimpleNamespace(
+        logging_manager=FakeLoggingManager(),
+        migration_state=SimpleNamespace(schema_version=3),
+    )
+    monkeypatch.setattr(app_main, "build_application_services", lambda: services)
 
     assert app_main.main() == 0
-    assert events[0] is fake_config
-    assert events[1] == Path(app_main.__file__).resolve().parent.parent
-    assert events[2] == "initialized"
-    assert events[3] is fake_config
-    assert isinstance(events[4], FakeRuntimeManager)
-    assert events[5:9] == [
-        "logging initialized",
-        "bootstrap",
-        {"operation": "startup"},
-        fake_config,
+    assert events == [
+        (
+            "LIM startup foundation initialized with schema_version=%d "
+            "ssh_initialized=true bootstrap_initialized=true "
+            "polling_initialized=true",
+            (3,),
+        )
     ]
-    assert isinstance(events[9], FakeRuntimeManager)
-    assert events[10] == "database initialized"
-    assert isinstance(events[11], FakeDatabaseManager)
-    assert events[12] == "migrations applied"
-    assert events[13:16] == [
-        "ssh",
-        {"operation": "initialize"},
-        "ssh manager",
-    ]
-    assert events[16] is fake_config
-    assert isinstance(events[17], FakeRuntimeManager)
-    assert isinstance(events[18], FakeLogger)
-    assert events[19] == Path(app_main.__file__).resolve().parent.parent
-    assert events[20] == "ssh initialized"
-    assert events[21:24] == [
-        "transactions initialized",
-        "inventory repository initialized",
-        "inventory",
-    ]
-    assert "inventory service initialized" in events
-    assert "bootstrap service constructed" in events
-    assert "bootstrap service initialized" in events
-    assert events[-1] == (
-        "LIM startup foundation initialized with schema_version=%d "
-        "ssh_initialized=true bootstrap_initialized=true",
-        (1,),
-    )
 
 
 def test_application_startup_sanitizes_pre_logging_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fail_configuration() -> None:
-        raise ConfigError("token=pre-logging-secret")
+    def fail_composition() -> None:
+        raise CompositionError("configuration")
 
-    monkeypatch.setattr(app_main, "ConfigManager", fail_configuration)
+    monkeypatch.setattr(app_main, "build_application_services", fail_composition)
 
     assert app_main.main() == 1
-    assert capsys.readouterr().err == (
-        "LIM startup failed before logging initialization\n"
-    )
+    assert capsys.readouterr().err == "LIM startup failed during configuration\n"
 
 
 def test_application_startup_sanitizes_logging_initialization_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    class FakeRuntimeManager:
-        def __init__(self, config: object, *, application_root: Path) -> None:
-            pass
+    def fail_composition() -> None:
+        raise CompositionError("logging")
 
-        def initialize(self) -> None:
-            pass
-
-    class FailingLoggingManager:
-        def __init__(self, config: object, runtime: object) -> None:
-            pass
-
-        def initialize(self) -> None:
-            raise LoggingManagerError("password=logging-secret")
-
-    monkeypatch.setattr(app_main, "ConfigManager", object)
-    monkeypatch.setattr(app_main, "RuntimeManager", FakeRuntimeManager)
-    monkeypatch.setattr(app_main, "LoggingManager", FailingLoggingManager)
+    monkeypatch.setattr(app_main, "build_application_services", fail_composition)
 
     assert app_main.main() == 1
-    assert capsys.readouterr().err == "LIM logging initialization failed\n"
+    assert capsys.readouterr().err == "LIM startup failed during logging\n"

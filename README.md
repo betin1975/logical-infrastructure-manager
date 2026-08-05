@@ -7,9 +7,9 @@ automation through controlled SSH access, durable jobs, and provider plugins.
 > **Project status:** foundation development. Configuration, runtime, centralized
 > logging, SQLite persistence, authoritative server inventory, discovery
 > observation history, the secure SSHManager, and the first read-only Linux
-> collector and remote Bootstrap Service are implemented and tested. Plugins,
-> polling, jobs, and user-facing
-> interfaces remain planned; they are not production features yet.
+> collector, remote Bootstrap Service, on-demand PollingService, and minimal CLI
+> are implemented and tested. Plugins, scheduled polling, durable jobs, and
+> advanced interfaces remain planned; they are not production features yet.
 
 ## Design principles
 
@@ -47,6 +47,26 @@ ruff check .
 ```
 
 See [INSTALL.md](INSTALL.md) for setup and verification details.
+
+## Minimal CLI
+
+The dependency-injected argparse CLI exposes explicit single-operation commands:
+
+```shell
+python -m app.cli server add mailcow 192.168.40.138 --user deployer
+python -m app.cli server list
+python -m app.cli server show mailcow
+python -m app.cli trust inspect mailcow
+python -m app.cli trust add mailcow --fingerprint SHA256:confirmed-fingerprint
+python -m app.cli bootstrap mailcow
+python -m app.cli poll mailcow
+```
+
+`server add` stores the administrative SSH username as inventory metadata; it
+does not accept a password or install a key. Trust addition still requires an
+operator-confirmed fingerprint. Commands print bounded status and identifiers,
+never private keys, public-key bodies, credentials, or raw SSH/collector output.
+The CLI has no scheduler, durable jobs, REST API, dashboard, or plugin runtime.
 
 ## Configuration
 

@@ -342,6 +342,24 @@ def test_service_failure_count_and_poll_records(
     assert successful.synchronization_state is SynchronizationState.IN_SYNC
 
 
+def test_service_exposes_narrow_read_only_inventory_queries(
+    service_context: tuple[InventoryService, RepositoryDouble, LoggerDouble],
+) -> None:
+    service, _, _ = service_context
+    first = register(service)
+
+    page = service.list_servers(limit=1)
+
+    assert page.total == 1
+    assert len(page.items) == 1
+    assert service.find_server_by_id(first.uuid) == first
+    assert service.find_server_by_hostname(first.hostname.upper()) == first
+    assert service.resolve_server(str(first.uuid)) == first
+    assert service.resolve_server(first.hostname) == first
+    with pytest.raises(ServerNotFoundError):
+        service.resolve_server("missing.example.test")
+
+
 def test_service_soft_delete_and_restore(
     service_context: tuple[InventoryService, RepositoryDouble, LoggerDouble],
 ) -> None:
