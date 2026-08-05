@@ -198,7 +198,7 @@ class BootstrapService:
             f"{key_type} {key_body} {self.settings.key_marker}\n"
         )
         self._initialized = True
-        self._logger.bind(component="bootstrap", operation="initialize").info(
+        self._logger.bind(operation="initialize").info(
             "Bootstrap foundation initialized collector_version=%s",
             self.settings.collector_version,
         )

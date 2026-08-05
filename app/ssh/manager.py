@@ -134,7 +134,7 @@ class SSHManager:
             self._identity_path(identity)
         self._trust_store.initialize()
         self._initialized = True
-        self._logger.bind(component="ssh", operation="initialize").info(
+        self._logger.bind(operation="initialize").info(
             "SSH foundation initialized"
         )
 
@@ -574,7 +574,6 @@ class SSHManager:
         trust_status: SSHTrustStatus | None = None,
     ) -> SSHLogger:
         return self._logger.bind(
-            component="ssh",
             server_id=str(target.server_uuid) if target.server_uuid else "-",
             server_name=target.host,
             operation=operation,

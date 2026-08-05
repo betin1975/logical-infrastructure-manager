@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Servers · LIM{% endblock %}
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1>Servers</h1>
+    <p class="muted">{{ total }} managed inventory record{% if total != 1 %}s{% endif %}</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('servers') }}">Refresh</a>
+</div>
+
+{% if rows %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Server</th>
+      <th>Address</th>
+      <th>Health</th>
+      <th>Bootstrap</th>
+      <th>Last poll</th>
+      <th>Observation</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    {% set server = row.server %}
+    <tr>
+      <td>
+        <a class="server-link" href="{{ url_for('server_detail', server_uuid=server.uuid) }}">{{ server.display_name }}</a>
+        <div class="muted small">{{ server.hostname }}</div>
+      </td>
+      <td>{{ server.primary_address }}</td>
+      <td><span class="badge {{ server.health_status.value }}">{{ server.health_status.value }}</span></td>
+      <td>
+        {% if server.last_bootstrap_at %}
+          <span class="badge healthy">Ready</span>
+        {% else %}
+          <span class="badge unknown">Not bootstrapped</span>
+        {% endif %}
+      </td>
+      <td>{{ server.last_poll_at | datetime_utc }}</td>
+      <td>
+        {% if row.latest %}
+          <span class="badge {{ row.latest.status.value }}">{{ row.latest.status.value }}</span>
+          <div class="muted small">{{ row.latest.discovered_at | datetime_utc }}</div>
+        {% else %}
+          <span class="muted">None</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty">
+  <h2>No servers yet</h2>
+  <p>Add the first server with the LIM CLI, then refresh this page.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -81,7 +81,7 @@ class DiscoveryService:
         """Purge only expired observations older than an explicit UTC cutoff."""
         cutoff = normalize_timestamp(before, field="cleanup cutoff")
         removed = self._repository.cleanup(before=cutoff)
-        self._logger.bind(component="discovery", operation="cleanup").info(
+        self._logger.bind(operation="cleanup").info(
             "expired discovery observations purged count=%d", removed
         )
         return removed
@@ -135,7 +135,6 @@ class DiscoveryService:
         self, observation: DiscoveryObservation, operation: str, message: str
     ) -> None:
         self._logger.bind(
-            component="discovery",
             server_id=str(observation.server_uuid),
             operation=operation,
         ).info(message)

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ server.display_name }} · LIM{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('servers') }}">← All servers</a>
+
+{% if notice %}
+<div class="notice success" role="status">{{ notice }}</div>
+{% endif %}
+{% if error %}
+<div class="notice error" role="alert">{{ error }}</div>
+{% endif %}
+
+<div class="heading-row detail-heading">
+  <div>
+    <h1>{{ server.display_name }}</h1>
+    <p class="muted">{{ server.hostname }} · {{ server.primary_address }}</p>
+  </div>
+  <div class="server-actions">
+    <form method="post" action="{{ url_for('poll_server', server_uuid=server.uuid) }}">
+      <button class="button" type="submit">Poll now</button>
+    </form>
+    <span class="badge large {{ server.health_status.value }}">{{ server.health_status.value }}</span>
+  </div>
+</div>
+
+<div class="grid">
+  <section class="card">
+    <h2>Inventory</h2>
+    <dl>
+      <dt>UUID</dt><dd class="mono">{{ server.uuid }}</dd>
+      <dt>Status</dt><dd>{{ server.status.value }}</dd>
+      <dt>Enabled</dt><dd>{{ "Yes" if server.enabled else "No" }}</dd>
+      <dt>Managed</dt><dd>{{ "Yes" if server.managed else "No" }}</dd>
+      <dt>Environment</dt><dd>{{ server.environment or "—" }}</dd>
+      <dt>Location</dt><dd>{{ server.location or "—" }}</dd>
+      <dt>Platform</dt><dd>{{ server.platform.value }}</dd>
+      <dt>OS family</dt><dd>{{ server.operating_system.value }}</dd>
+      <dt>Synchronization</dt><dd>{{ server.synchronization_state.value }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Monitoring</h2>
+    <dl>
+      <dt>Bootstrapped</dt><dd>{{ server.last_bootstrap_at | datetime_utc }}</dd>
+      <dt>Last poll</dt><dd>{{ server.last_poll_at | datetime_utc }}</dd>
+      <dt>Last success</dt><dd>{{ server.last_successful_poll_at | datetime_utc }}</dd>
+      <dt>Last failure</dt><dd>{{ server.last_failure_at | datetime_utc }}</dd>
+      <dt>Failure count</dt><dd>{{ server.failure_count }}</dd>
+      <dt>Discovery state</dt><dd>{{ server.discovery_state.value }}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="card wide">
+  <h2>Latest observation</h2>
+  {% if latest %}
+  <div class="grid observation-grid">
+    <dl>
+      <dt>Collected</dt><dd>{{ latest.discovered_at | datetime_utc }}</dd>
+      <dt>Status</dt><dd><span class="badge {{ latest.status.value }}">{{ latest.status.value }}</span></dd>
+      <dt>State</dt><dd>{{ latest.state.value }}</dd>
+      <dt>Collector</dt><dd>{{ latest.collector_version }}</dd>
+      <dt>Hostname</dt><dd>{{ latest.hostname }}</dd>
+      <dt>Architecture</dt><dd>{{ latest.architecture or "—" }}</dd>
+    </dl>
+    <dl>
+      <dt>Operating system</dt><dd>{{ latest.operating_system.name if latest.operating_system else "—" }}</dd>
+      <dt>Distribution</dt><dd>{{ latest.operating_system.distribution if latest.operating_system else "—" }}</dd>
+      <dt>Version</dt><dd>{{ latest.operating_system.version if latest.operating_system else "—" }}</dd>
+      <dt>Kernel</dt><dd>{{ latest.kernel.version if latest.kernel else "—" }}</dd>
+      <dt>Logical CPUs</dt><dd>{{ latest.cpu.logical_cores if latest.cpu else "—" }}</dd>
+      <dt>Memory</dt><dd>{{ latest.memory.total_bytes | bytesize if latest.memory else "—" }}</dd>
+    </dl>
+  </div>
+
+  <div class="facts">
+    <div><strong>{{ latest.interfaces | length }}</strong><span>Interfaces</span></div>
+    <div><strong>{{ latest.addresses | length }}</strong><span>Addresses</span></div>
+    <div><strong>{{ latest.disks | length }}</strong><span>Disks</span></div>
+    <div><strong>{{ latest.services | length }}</strong><span>Services</span></div>
+    <div><strong>{{ latest.containers | length }}</strong><span>Containers</span></div>
+  </div>
+  {% else %}
+  <p class="muted">No discovery observation has been saved for this server.</p>
+  {% endif %}
+</section>
+
+{% if server.tags or server.labels %}
+<section class="card wide">
+  <h2>Classification</h2>
+  {% if server.tags %}
+  <div class="chips">{% for tag in server.tags | sort(attribute='name') %}<span>{{ tag.name }}</span>{% endfor %}</div>
+  {% endif %}
+  {% if server.labels %}
+  <dl class="labels">{% for label in server.labels | sort(attribute='key') %}<dt>{{ label.key }}</dt><dd>{{ label.value }}</dd>{% endfor %}</dl>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

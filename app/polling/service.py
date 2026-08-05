@@ -96,7 +96,6 @@ class PollingService:
         started_at = self._now()
         started_tick = self._monotonic()
         logger = self._logger.bind(
-            component="polling",
             server_id=str(server_uuid),
             operation="poll_linux",
             correlation_id=correlation_id.strip() if correlation_id else None,

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · LIM{% endblock %}
+{% block content %}
+<div class="empty">
+  <h1>{{ title }}</h1>
+  <p>{{ message }}</p>
+  <a class="button" href="{{ url_for('servers') }}">Return to servers</a>
+</div>
+{% endblock %}
