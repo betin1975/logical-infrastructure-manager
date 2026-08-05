@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -195,6 +196,9 @@ def test_successful_poll_finalizes_discovery_before_inventory() -> None:
     assert result.discovery_status is DiscoveryStatus.COMPLETE
     assert result.inventory_updated
     assert discovery.observation is not None
+    assert type(result).__name__ == "PollResult"
+    with pytest.raises(FrozenInstanceError):
+        result.status = PollingStatus.FAILED  # type: ignore[misc]
     assert events == [
         "inventory.get",
         "collector.collect",
