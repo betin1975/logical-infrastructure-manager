@@ -17,7 +17,7 @@ from app.discovery import (
 from app.inventory import InventoryError, Server, ServerStatus
 
 from .exceptions import PollingValidationError
-from .models import PollingFailureType, PollingResult, PollingStatus
+from .models import PollingFailureType, PollingStatus, PollResult
 
 
 class PollingInventory(Protocol):
@@ -82,7 +82,7 @@ class PollingService:
 
     def poll(
         self, server_uuid: UUID, *, correlation_id: str | None = None
-    ) -> PollingResult:
+    ) -> PollResult:
         """Run one on-demand poll and return a safe immutable result."""
         if not isinstance(server_uuid, UUID) or server_uuid.int == 0:
             raise PollingValidationError("polling server UUID is invalid")
@@ -197,7 +197,7 @@ class PollingService:
         started_at: datetime,
         started_tick: float,
         logger: PollingLogger,
-    ) -> PollingResult:
+    ) -> PollResult:
         try:
             self._inventory.record_failed_poll(server_uuid)
         except InventoryError:
@@ -222,7 +222,7 @@ class PollingService:
         started_at: datetime,
         started_tick: float,
         logger: PollingLogger,
-    ) -> PollingResult:
+    ) -> PollResult:
         try:
             finalized = self._discovery.mark_failed(
                 pending.uuid, "poll discovery finalization failed"
@@ -268,7 +268,7 @@ class PollingService:
         inventory_updated: bool = False,
         observation: DiscoveryObservation | None = None,
         discovery_status: DiscoveryStatus | None = None,
-    ) -> PollingResult:
+    ) -> PollResult:
         result = self._result(
             server_uuid,
             PollingStatus.FAILED,
@@ -298,9 +298,9 @@ class PollingService:
         inventory_updated: bool,
         observation: DiscoveryObservation | None = None,
         discovery_status: DiscoveryStatus | None = None,
-    ) -> PollingResult:
+    ) -> PollResult:
         finished_at = self._now()
-        return PollingResult(
+        return PollResult(
             server_uuid=server_uuid,
             status=status,
             failure_type=failure_type,

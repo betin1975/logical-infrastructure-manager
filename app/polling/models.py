@@ -36,7 +36,7 @@ class PollingFailureType(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class PollingResult:
+class PollResult:
     """Safe final result of one explicitly requested poll."""
 
     server_uuid: UUID
@@ -107,3 +107,7 @@ class PollingResult:
     def is_partial(self) -> bool:
         """Return whether a successful poll retained partial collected facts."""
         return self.discovery_status is DiscoveryStatus.PARTIAL
+
+
+# Preserve the Issue #10A import while the public result name becomes PollResult.
+PollingResult = PollResult

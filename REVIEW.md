@@ -3,7 +3,8 @@
 This document records the completed self-review of all changes currently made on
 this branch, including the Configuration Manager, Runtime Manager, Logging
 Foundation, Persistence Foundation, Inventory and Discovery domains, SSHManager,
-Linux Collector Foundation, and Bootstrap Service Foundation. The review covers architecture, security,
+Linux Collector Foundation, Bootstrap Service Foundation, and on-demand Polling
+Service. The review covers architecture, security,
 maintainability, tests, Docker and Git practices, remaining technical debt, and
 release readiness.
 
@@ -11,8 +12,9 @@ This branch establishes the Logical Infrastructure Manager (LIM) project
 foundation. It adds permanent engineering guidance, a target architecture,
 layered configuration, Python quality tooling, tests, container definitions,
 security and lifecycle documentation, and focused Git exclusions. It implements
-the authoritative server inventory while deliberately excluding polling,
-plugins, jobs, scheduling, and user-interface features.
+the authoritative server inventory and explicit single-server polling while
+deliberately excluding scheduled polling, plugins, jobs, and user-interface
+features.
 
 Runtime lifecycle management and centralized logging are now implemented. Logging
 uses configuration-driven console and rotating-file handlers, structured context,
@@ -40,6 +42,12 @@ It requires pre-established admin-key access, strict LIM-owned trust, Linux, and
 collector; verifies the resulting account, files, authentication, forced command,
 schema, and host identity; and records success only through InventoryService.
 Ordinary application startup performs local validation and no network access.
+
+Issue #10A adds a dependency-injected `PollingService` that coordinates exactly
+one eligible server through InventoryService, LinuxCollector, and DiscoveryService.
+It returns an immutable `PollResult`, preserves partial observations as successful
+partial discovery, finalizes Discovery before updating Inventory, and adds no
+scheduler, job, API, direct SSH, SQL, repository, or subprocess behavior.
 
 The architectural direction is appropriate for an early-stage infrastructure
 manager: a modular monolith, inward dependency flow, SQLite as the authoritative
@@ -97,6 +105,8 @@ version-enforcement, and documentation concerns remain.
 - `app/bootstrap/` owns typed bootstrap requests, plans, results, failures,
   validation, atomic remote helper scripts, orchestration, and the standalone
   versioned Python 3.9+ health artifact.
+- `app/polling/` owns the narrow on-demand polling coordinator, immutable typed
+  results, safe failure classifications, and consumer-side dependency protocols.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -144,6 +154,10 @@ version-enforcement, and documentation concerns remain.
 - `tests/test_remote_health_artifact.py` verifies Python 3.9 grammar, supported
   distributions, bounded execution/document output, required versus optional
   failure behavior, service-state distinctions, and credential exclusion.
+- `tests/test_polling_service.py` verifies single-server success, partial results,
+  collector exceptions, eligibility rejection, Discovery submission and
+  finalization failures, Inventory update failures, call ordering, immutable
+  results, and safe logging without SSH, SQL, or network access.
 
 ## Modified
 
@@ -176,6 +190,8 @@ version-enforcement, and documentation concerns remain.
   `CHANGELOG.md`, `INSTALL.md`, and `UPGRADE.md` document bootstrap prerequisites,
   boundaries, security, idempotency, partial failure, artifact compatibility, and
   deployment layout.
+- `tests/test_architecture.py` additionally prevents polling from importing SSH,
+  subprocess, persistence managers, SQL, or concrete repositories.
 
 # Architecture Review
 
@@ -563,6 +579,39 @@ managed breadth of admin sudo rights, lack of disposable multi-distribution SSH
 integration tests on this Docker-less host, and the need for an explicit artifact
 schema compatibility window. These are recorded below.
 
+## On-demand Polling Service self-review
+
+- **Architecture:** `PollingService` receives narrow protocols implemented by
+  InventoryService, DiscoveryService, and LinuxCollector. It imports no SSHManager,
+  subprocess, SQLite, persistence manager, or repository implementation. An AST
+  architecture test enforces these boundaries.
+- **Scope:** one explicit call polls exactly one server. There is no scheduler,
+  retry loop, durable job, dashboard, API, concurrency owner, or startup wiring.
+- **Eligibility:** collection is rejected before side effects when the inventory
+  server is disabled, unmanaged, deleted, unavailable, or lacks a bootstrap
+  timestamp.
+- **Lifecycle ordering:** a collected observation is recorded pending, then
+  finalized through DiscoveryService before any Inventory poll transition. A
+  complete or partial observation is finalized successful; this preserves
+  `DiscoveryStatus.PARTIAL` rather than incorrectly overwriting it as failed.
+- **Failure consistency:** collector exceptions record one failed Inventory poll
+  because no observation exists. Submission failures leave Inventory unchanged.
+  If successful finalization fails, PollingService attempts the supported failed
+  finalization and records Inventory failure only after that succeeds. If neither
+  final state is known, Inventory remains unchanged. An Inventory success-update
+  failure can never produce a successful `PollResult`.
+- **Idempotency:** each request performs at most one Inventory success or failure
+  transition and never applies a compensating second version change. Distinct
+  operator-requested polls remain distinct timestamped events.
+- **Results and logging:** `PollResult` is a frozen dataclass with typed status and
+  failure enums, observation lifecycle/status, duration, and Inventory-update
+  state. The earlier `PollingResult` name remains a compatibility alias. Logging
+  uses injected structured context and fixed messages; dependency exception text,
+  raw SSH output, and credentials are never included.
+
+No blocking polling correctness, persistence-boundary, SSH-boundary, secret-
+logging, or maintainability finding remains in the scoped review.
+
 # Technical Debt
 
 ## Configuration
@@ -623,6 +672,20 @@ schema compatibility window. These are recorded below.
 - Establish fact-count limits for interfaces, disks, services, and containers in
   addition to existing SSH byte and discovery metadata limits before polling
   untrusted high-cardinality hosts.
+
+## On-demand polling
+
+- Define per-server concurrency exclusion and request idempotency before polling
+  can be invoked concurrently by a future interface or worker.
+- Add cancellation and an overall poll deadline when durable jobs own remote
+  execution; do not add retries independently of SSHManager policy.
+- Decide how a future operator interface reports the rare state where Discovery
+  finalized successfully but the subsequent Inventory success update failed.
+- Add composition coverage with real InventoryService and DiscoveryService over a
+  temporary database when polling is wired into an entry point; current tests use
+  deterministic service-shaped doubles.
+- Keep scheduling, backoff, retention, and fleet concurrency in the future job
+  engine rather than expanding the on-demand coordinator.
 
 ## Bootstrap Service
 
@@ -693,6 +756,17 @@ Compose YAML structural parsing passed
 git diff --check passed
 ```
 
+The later scoped PollingService validation was intentionally limited by the
+Issue #10A instruction and completed separately:
+
+```text
+14 polling-service tests passed
+Scoped Ruff check passed
+```
+
+The 365-test coverage figure above predates the polling package; a new full-suite
+coverage measurement was intentionally not run under the scoped command limit.
+
 Docker was not installed on the validation host, so an actual image build and
 container execution were not verified.
 
@@ -739,6 +813,9 @@ also show plain `python -m pytest`, which does not enforce coverage.
   distribution, OpenSSH version, and Python baseline; Docker was unavailable.
 - Concurrent bootstrap attempts against the same target and interruption at each
   remote mutation boundary; the unit suite covers representative partial retry.
+- Polling composition with real InventoryService and DiscoveryService over
+  temporary SQLite persistence, plus concurrent same-server requests. These are
+  deferred until an entry point or job owner exists.
 
 # Remaining TODOs
 
@@ -766,8 +843,8 @@ also show plain `python -m pytest`, which does not enforce coverage.
 3. Add licensing and contributor-governance files.
 4. Implement inventory relationships, plugins, jobs, and interfaces only after
    their designs are approved.
-5. Integrate Linux collection with a future job/polling workflow that submits
-   observations only through `DiscoveryService`.
+5. Place the implemented on-demand polling coordinator behind a future durable
+   job/interface boundary without adding scheduling or retries to PollingService.
 6. Define least-privilege admin sudoers, per-target bootstrap serialization, and
    artifact compatibility before dashboard-driven or concurrent bootstrap.
 
@@ -799,16 +876,17 @@ The Inventory Domain follows the repository-only boundary: immutable models and
 `InventoryService` contain business rules, the repository protocol belongs to the
 domain, and SQLite implementation details remain in `app.persistence`. The schema
 is normalized, indexed for implemented queries, foreign-key protected, soft-delete
-safe, and optimistic-concurrency aware. No SSH, polling, plugin, job, API, UI, or
-authorization behavior was added.
+safe, and optimistic-concurrency aware. No SSH, plugin, job, API, UI, or
+authorization behavior exists inside the Inventory domain; polling reaches it
+only through InventoryService.
 
 The Discovery Domain preserves the same layering while keeping observations
 explicitly non-authoritative. Its immutable model, normalized schema, service
 lifecycle, bounded metadata, indexed history, optimistic updates, and expired-only
 cleanup are consistent with the approved design. Self-review regressions cover
 immutable collected facts and reserved synchronization authority. Collection
-remains observation-only and no polling, plugin, job, interface, authentication,
-or authorization behavior was added.
+remains observation-only and contains no polling orchestration, plugin, job,
+interface, authentication, or authorization behavior.
 
 The SSHManager foundation is the sole remote-access implementation and remains
 fully outside persistence and domain mutation. It uses strict isolated trust,
@@ -828,6 +906,15 @@ and distinguish optional product absence from degraded core collection. The
 implementation adds no SQL, inventory mutation, subprocess, scheduler, plugin,
 Docker dependency, or network-dependent test. No blocking parser, security,
 performance, maintainability, or extensibility finding remains after self-review.
+
+The on-demand PollingService is a small application coordinator over the three
+approved boundaries. It validates inventory eligibility, collects once, persists
+and finalizes the observation, then records exactly one corresponding Inventory
+poll outcome. Partial collection remains a successful partial observation; an
+unknown Discovery final state cannot update Inventory; and no failure path can
+return a successful immutable result. It owns no scheduling, job durability,
+transport, SQL, repository, API, or UI behavior. No blocking polling finding
+remains after the scoped tests and architecture review.
 
 The Bootstrap Service preserves the same boundaries while providing the narrowly
 approved remote repair workflow. Pre-existing admin access and strict trust are
