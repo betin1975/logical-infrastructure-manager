@@ -6,7 +6,10 @@
     <h1>Servers</h1>
     <p class="muted">{{ total }} managed inventory record{% if total != 1 %}s{% endif %}</p>
   </div>
-  <a class="button secondary" href="{{ url_for('servers') }}">Refresh</a>
+  <div class="server-actions">
+    <a class="button" href="{{ url_for('onboarding') }}">Onboard server</a>
+    <a class="button secondary" href="{{ url_for('servers') }}">Refresh</a>
+  </div>
 </div>
 
 {% if rows %}
@@ -56,7 +59,8 @@
 {% else %}
 <div class="empty">
   <h2>No servers yet</h2>
-  <p>Add the first server with the LIM CLI, then refresh this page.</p>
+  <p>Use the onboarding guide to add the first server.</p>
+  <a class="button" href="{{ url_for('onboarding') }}">Open onboarding guide</a>
 </div>
 {% endif %}
 {% endblock %}

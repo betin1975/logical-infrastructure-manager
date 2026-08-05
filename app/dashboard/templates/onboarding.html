@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Onboard Server · LIM{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('servers') }}">← All servers</a>
+
+<div class="heading-row">
+  <div>
+    <h1>Onboard a server</h1>
+    <p class="muted">Use the exact hostname returned by <code>hostname -f</code>.</p>
+  </div>
+</div>
+
+<section class="card wide">
+  <h2>Server details</h2>
+  <form method="get" action="{{ url_for('onboarding') }}" class="onboarding-form">
+    <label>
+      Hostname
+      <input name="server_name" value="{{ server_name }}" placeholder="analyticsdb" required>
+    </label>
+    <label>
+      IP address
+      <input name="server_ip" value="{{ server_ip }}" placeholder="192.168.42.209" required>
+    </label>
+    <label>
+      Administrative SSH user
+      <input name="admin_user" value="{{ admin_user }}" placeholder="deployer" required>
+    </label>
+    <label>
+      Verified ED25519 fingerprint
+      <input name="fingerprint" value="{{ fingerprint }}" placeholder="SHA256:...">
+    </label>
+    <button class="button" type="submit">Generate commands</button>
+  </form>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>1. Confirm the real hostname</h2>
+  <p>Run this on the target server:</p>
+  <pre><code>hostname -f</code></pre>
+  <p class="muted">The result must match the hostname entered above.</p>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>2. Add the server to LIM</h2>
+  <pre><code>cd /opt/logical-infrastructure-manager
+source .venv/bin/activate
+
+python -m app.cli server add \
+  {{ server_name or "SERVER_HOSTNAME" }} \
+  {{ server_ip or "SERVER_IP" }} \
+  --user {{ admin_user or "deployer" }}</code></pre>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>3. Verify and trust the SSH host key</h2>
+  <p>On the target server:</p>
+  <pre><code>sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></pre>
+  <p>Then on the LIM server, use only the <code>SHA256:...</code> portion:</p>
+  <pre><code>python -m app.cli trust add \
+  {{ server_name or "SERVER_HOSTNAME" }} \
+  --fingerprint '{{ fingerprint or "SHA256:PASTE_EXACT_FINGERPRINT" }}'</code></pre>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>4. Copy the bootstrap bundle</h2>
+  <pre><code>cd /opt/logical-infrastructure-manager
+
+scp \
+  ssh/monitor_ed25519.pub \
+  app/bootstrap/artifacts/remote_health.py \
+  lim-bootstrap-install.sh \
+  {{ admin_user or "deployer" }}@{{ server_ip or "SERVER_IP" }}:/tmp/</code></pre>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>5. Install manually on the target</h2>
+  <pre><code>ssh {{ admin_user or "deployer" }}@{{ server_ip or "SERVER_IP" }}
+
+cd /tmp
+chmod +x lim-bootstrap-install.sh
+sudo ./lim-bootstrap-install.sh</code></pre>
+  <p class="muted">Enter the sudo password directly on the target server.</p>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>6. Verify the restricted monitor account</h2>
+  <pre><code>cd /opt/logical-infrastructure-manager
+
+ssh \
+  -i ssh/monitor_ed25519 \
+  -o IdentitiesOnly=yes \
+  -o UserKnownHostsFile=runtime/data/known_hosts \
+  -o StrictHostKeyChecking=yes \
+  monitor@{{ server_ip or "SERVER_IP" }}</code></pre>
+  <p class="muted">Expected: JSON output, then the connection closes. A PTY warning is normal.</p>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>7. Record bootstrap completion</h2>
+  <pre><code>python - &lt;&lt;'PY'
+from app.composition import build_application_services
+
+services = build_application_services()
+server = services.inventory_service.resolve_server("{{ server_name or "SERVER_HOSTNAME" }}")
+services.inventory_service.record_bootstrap_success(server.uuid)
+print("Bootstrap recorded")
+PY</code></pre>
+</section>
+
+<section class="card wide onboarding-step">
+  <h2>8. Poll and verify</h2>
+  <pre><code>python -m app.cli poll {{ server_name or "SERVER_HOSTNAME" }}
+python -m app.cli server show {{ server_name or "SERVER_HOSTNAME" }}</code></pre>
+  <p>After the first successful CLI poll, the dashboard can use <strong>Poll now</strong> from the server detail page.</p>
+</section>
+
+<section class="card wide">
+  <h2>Success checklist</h2>
+  <ul class="checklist">
+    <li>Server appears in inventory</li>
+    <li>SSH trust is marked trusted</li>
+    <li>Monitor account returns JSON</li>
+    <li>Bootstrap is recorded</li>
+    <li>Poll completes successfully</li>
+    <li>Latest observation appears in the dashboard</li>
+  </ul>
+</section>
+{% endblock %}

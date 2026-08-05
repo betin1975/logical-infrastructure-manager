@@ -1,4 +1,4 @@
-"""Flask application for the minimal LIM dashboard."""
+"""Flask application for the LIM dashboard."""
 
 from __future__ import annotations
 
@@ -57,6 +57,16 @@ def create_dashboard(
         ]
         return render_template("servers.html", rows=rows, total=page.total)
 
+    @app.get("/onboarding")
+    def onboarding():
+        return render_template(
+            "onboarding.html",
+            server_name=request.args.get("server_name", ""),
+            server_ip=request.args.get("server_ip", ""),
+            admin_user=request.args.get("admin_user", "deployer"),
+            fingerprint=request.args.get("fingerprint", ""),
+        )
+
     @app.get("/servers/<server_uuid>")
     def server_detail(server_uuid: str):
         server = _find_server_or_404(state, server_uuid)
@@ -86,15 +96,15 @@ def create_dashboard(
             )
 
         status = _enum_value(getattr(result, "status", None))
-        observation_status = _enum_value(
+        observation_state = _enum_value(
             getattr(result, "observation_state", None)
         )
         observation_uuid = getattr(result, "observation_uuid", None)
 
         if status == "succeeded":
             detail = "Poll completed successfully."
-            if observation_status:
-                detail = f"Poll completed: {observation_status} observation."
+            if observation_state:
+                detail = f"Poll completed: {observation_state} observation."
             if observation_uuid:
                 detail = f"{detail} Observation {observation_uuid}."
             return redirect(
