@@ -144,3 +144,56 @@ def test_ssh_process_ownership_and_domain_isolation() -> None:
         "OpenSSH subprocesses belong only to app.ssh.command; SSH cannot import "
         f"persistence or mutate inventory/discovery: {sorted(set(violations))}"
     )
+
+
+def test_collectors_use_services_and_sshmanager_boundaries_only() -> None:
+    """Prevent collectors from gaining persistence or process ownership."""
+    project_root = Path(__file__).resolve().parent.parent
+    collector_root = project_root / "app/collectors"
+    forbidden_modules = {
+        "sqlite3",
+        "subprocess",
+        "app.persistence",
+        "app.discovery.repository",
+        "app.inventory.repository",
+    }
+    forbidden_names = {
+        "DatabaseManager",
+        "DiscoveryRepository",
+        "InventoryRepository",
+        "InventoryService",
+        "SQLiteDiscoveryRepository",
+        "SQLiteInventoryRepository",
+        "TransactionManager",
+    }
+    violations: list[str] = []
+
+    for path in collector_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import) and any(
+                alias.name in forbidden_modules
+                or any(
+                    alias.name.startswith(f"{module}.") for module in forbidden_modules
+                )
+                for alias in node.names
+            ):
+                violations.append(str(path.relative_to(project_root)))
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (
+                    node.module in forbidden_modules
+                    or any(
+                        node.module.startswith(f"{module}.")
+                        for module in forbidden_modules
+                    )
+                    or any(alias.name in forbidden_names for alias in node.names)
+                )
+            ):
+                violations.append(str(path.relative_to(project_root)))
+
+    assert not violations, (
+        "collectors may return observations but cannot own SQL, repositories, "
+        f"inventory mutation, or subprocess execution: {sorted(set(violations))}"
+    )

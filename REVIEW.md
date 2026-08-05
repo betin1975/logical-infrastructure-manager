@@ -2,15 +2,16 @@
 
 This document records the completed self-review of all changes currently made on
 this branch, including the Configuration Manager, Runtime Manager, Logging
-Foundation, Persistence Foundation, and Inventory Domain Foundation. The review
-covers architecture, security, maintainability, tests, Docker and Git practices,
-remaining technical debt, and release readiness.
+Foundation, Persistence Foundation, Inventory and Discovery domains, SSHManager,
+and Linux Collector Foundation. The review covers architecture, security,
+maintainability, tests, Docker and Git practices, remaining technical debt, and
+release readiness.
 
 This branch establishes the Logical Infrastructure Manager (LIM) project
 foundation. It adds permanent engineering guidance, a target architecture,
 layered configuration, Python quality tooling, tests, container definitions,
 security and lifecycle documentation, and focused Git exclusions. It implements
-the authoritative server inventory while deliberately excluding SSH, polling,
+the authoritative server inventory while deliberately excluding polling,
 plugins, jobs, scheduling, and user-interface features.
 
 Runtime lifecycle management and centralized logging are now implemented. Logging
@@ -26,9 +27,16 @@ repositories, or access low-level persistence managers.
 The SQL-free `InventoryService` is the sole mutation gateway for immutable server,
 tag, label, lifecycle, health, discovery, poll, and synchronization state.
 
+Issue #8 adds a stateless Linux collector that uses SSHManager's monitor identity
+and returns typed, non-authoritative observations. Its fixed read-only commands,
+bounded parser inputs, partial-failure behavior, positive product detection, and
+architecture tests preserve the established Inventory, Discovery, SSH, and
+persistence boundaries. It adds no scheduler, direct persistence, inventory
+mutation, plugin behavior, or container dependency.
+
 The architectural direction is appropriate for an early-stage infrastructure
 manager: a modular monolith, inward dependency flow, SQLite as the authoritative
-inventory, a single future `SSHManager`, injected dependencies, durable jobs, and
+inventory, a single `SSHManager`, injected dependencies, durable jobs, and
 plugins constrained to provider adaptation.
 
 The two original blocking findings have been resolved. Runtime contents are now
@@ -76,6 +84,9 @@ version-enforcement, and documentation concerns remain.
   implementation.
 - `app/ssh/` owns typed SSH inputs/results, validation, bounded OpenSSH process
   execution, atomic host trust, diagnostics, transfer, and the sole SSHManager.
+- `app/collectors/` owns the stateless collector boundary; its Linux package
+  defines the fixed command catalog, safe parsers, validation, internal typed
+  facts, exceptions, and observation mapping.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -95,7 +106,8 @@ version-enforcement, and documentation concerns remain.
   validation, startup, WAL behavior, readers, and writer contention.
 - `tests/test_architecture.py` enforces the repository boundary by rejecting
   SQLite imports and low-level persistence-manager imports outside the persistence
-  package and composition roots.
+  package and composition roots, and prevents collectors from importing
+  persistence, repositories, subprocess, or inventory mutation services.
 - `tests/test_inventory_domain.py`, `tests/test_inventory_repository.py`, and
   `tests/test_inventory_service.py` verify model invariants, validation, schema,
   indexes, filters, search, pagination, rollback, soft deletion, optimistic
@@ -108,6 +120,10 @@ version-enforcement, and documentation concerns remain.
   inspection and mutation, fingerprint races, bounded commands, classification,
   retries, transfers, diagnostics, cancellation, and safe logging without a
   network or operator credential.
+- `tests/test_linux_collector.py` verifies Ubuntu, Debian, Rocky Linux, AlmaLinux,
+  hostname fallback, command policy, timeouts, retries, partial failures,
+  malformed output, missing Docker/systemd, product detection, discovery mapping,
+  and safe logging through an SSHManager double.
 
 ## Modified
 
@@ -127,6 +143,9 @@ version-enforcement, and documentation concerns remain.
   validate persistence configuration, expose initialization state and public
   APIs, and initialize/migrate SQLite after logging.
 - `config/default.yml` and `config/local.yml.example` define safe SQLite defaults.
+- `README.md`, `ARCHITECTURE.md`, `INSTALL.md`, `DECISIONS.md`, and `CHANGELOG.md`
+  document the Linux collector boundary, supported distributions, command and
+  parser strategy, product detection, limitations, and ADR-0018.
 
 # Architecture Review
 
@@ -408,6 +427,47 @@ permissions, post-initialization trust-path substitution, cancellation-hook
 failure cleanup, unused configured default port, and container credential mount
 ownership. No blocking SSH or application-security finding remains.
 
+## Linux collector self-review
+
+- **Architecture:** `LinuxCollector` depends on immutable `Server`, SSHManager,
+  discovery value types, and a contextual logger only. It returns a pending
+  observation for submission through `DiscoveryService`. It imports no
+  persistence, repository, subprocess, plugin, scheduler, or inventory mutation
+  service; an AST test enforces these restrictions.
+- **Command safety:** All probes come from one closed read-only command catalog.
+  Every request has an explicit timeout and uses `SSHIdentity.MONITOR`.
+  Hostname fallback is two structured requests instead of shell syntax. Output
+  bounds, trust, authentication, and transient retries remain owned by SSHManager;
+  the collector never multiplies retry attempts.
+- **Parser robustness:** JSON, os-release key/value data, delimiter parsing, and
+  token parsing are isolated in pure functions. Unknown keys and malformed nested
+  records are ignored where safe. Invalid top-level JSON, unexpected core text,
+  truncated output, timeouts, missing commands, and SSHManager command errors are
+  classified without exposing stdout or stderr and do not abort unrelated probes.
+- **Discovery mapping:** Host identity, OS/distribution/version, Linux kernel,
+  architecture, CPU, memory, disks, interfaces, addresses, listening and running
+  services, containers, product evidence, timestamp, duration, collector version,
+  and bounded metadata map into immutable discovery values. Complete collection is
+  returned `PENDING/UNKNOWN`; core degradation is `PENDING/PARTIAL`, preserving
+  the existing DiscoveryService lifecycle contract.
+- **Product detection:** Docker, MySQL/MariaDB, Redis, Prometheus, Asterisk, and
+  FreePBX require positive command evidence. Absence is not treated as inventory
+  truth or as a core collection failure. No Docker daemon is needed for tests.
+- **Logging and privacy:** Logs bind only server UUID, inventory hostname, and
+  operation, then record fixed command identifier, duration, exit code, attempt
+  count, collector version, and safe failure class. They never contain remote
+  output, stderr, credentials, SSH paths, keys, or fingerprints.
+- **Performance:** Collection is intentionally sequential so fixed probes cannot
+  create uncontrolled remote concurrency. Parser input is capped at 1 MiB even
+  when a test double violates SSHManager's output contract. Large fact collections
+  remain bounded by SSHManager bytes and discovery-domain metadata constraints.
+
+Self-review identified and fixed incorrect complete-status construction for a
+pending observation, unsafe shell-style hostname fallback, empty/unexpected core
+output not marking partial, one SSHManager command exception aborting remaining
+probes, unbounded parser input from test doubles, and accidental exposure risk
+from inspecting stderr. No blocking collector finding remains.
+
 # Technical Debt
 
 ## Configuration
@@ -449,9 +509,25 @@ ownership. No blocking SSH or application-security finding remains.
   operational preservation requirements before automating cleanup.
 - Batch child hydration across observation pages if representative workloads show
   the current per-observation child queries are material.
-- Define source-specific collector schemas and metadata allowlists before SSH or
-  plugin collection is implemented.
+- Define source-specific metadata schema versioning and broader allowlists before
+  adding collectors or plugin-owned observation fields.
 - Add bulk recording and cleanup limits before high-volume polling exists.
+
+## Linux collector
+
+- Define a typed collector configuration and bootstrap integration for the monitor
+  username without coupling the collector to ConfigManager.
+- Version the command/output compatibility contract before changing probes in a
+  way that could alter persisted observation meaning.
+- Add disposable OpenSSH integration tests for each supported distribution when
+  CI provides containers; unit tests intentionally remain network-free.
+- Define collection concurrency, cancellation, scheduling, durable result
+  submission, and overall collection deadlines in the future job/polling design.
+- Consider command batching only after measurement; it must not weaken structured
+  command safety, per-command timeouts, partial-failure attribution, or logging.
+- Establish fact-count limits for interfaces, disks, services, and containers in
+  addition to existing SSH byte and discovery metadata limits before polling
+  untrusted high-cardinality hosts.
 
 ## SSH, plugins, and jobs
 
@@ -491,11 +567,11 @@ ownership. No blocking SSH or application-security finding remains.
 The implemented suite was run against CPython 3.12.13 with these results:
 
 ```text
-292 tests passed
-91.77% branch-aware coverage
+312 tests passed
+91.92% branch-aware coverage
 Ruff passed
 Python compilation passed
-Configuration, runtime, logging, persistence, inventory, discovery, SSH, startup, container-layout, and concurrency tests passed
+Configuration, runtime, logging, persistence, inventory, discovery, SSH, Linux collector, startup, container-layout, and concurrency tests passed
 Compose YAML structural parsing passed
 git diff --check passed
 ```
@@ -536,6 +612,12 @@ also show plain `python -m pytest`, which does not enforce coverage.
 - An explicit internationalized-hostname policy; current validation accepts only
   normalized ASCII hostnames.
 - Property-based state-transition and repository round-trip testing.
+- Parser fuzz/property tests for large, deeply nested, mixed-type, and
+  distribution-specific command responses.
+- End-to-end Linux collection through disposable trusted OpenSSH targets for each
+  supported distribution; the current suite deliberately mocks SSHManager.
+- High-cardinality interface, disk, service, and container observation limits and
+  performance tests once product limits are approved.
 
 # Remaining TODOs
 
@@ -547,15 +629,13 @@ also show plain `python -m pytest`, which does not enforce coverage.
 ## Strongly recommended for this foundation branch
 
 1. Decide and document how Docker consumes local configuration.
-2. Remove the unused SSH mount from the one-shot foundation container until
-   `SSHManager` exists.
-3. Make the Python compatibility policy enforceable or phrase it as a tested
+2. Make the Python compatibility policy enforceable or phrase it as a tested
    baseline rather than a hard compatibility range.
-4. Make Docker builds reproducible enough for the intended development stage.
-5. Fix boolean-versus-integer validation and define supported YAML scalar types.
-6. Make the canonical test command enforce coverage consistently.
-7. Correct the repository-layout documentation for directories absent from Git.
-8. Replace or remove the ineffective changelog comparison link.
+3. Make Docker builds reproducible enough for the intended development stage.
+4. Fix boolean-versus-integer validation and define supported YAML scalar types.
+5. Make the canonical test command enforce coverage consistently.
+6. Correct the repository-layout documentation for directories absent from Git.
+7. Replace or remove the ineffective changelog comparison link.
 
 ## Acceptable as explicitly tracked follow-up
 
@@ -563,8 +643,10 @@ also show plain `python -m pytest`, which does not enforce coverage.
 2. Add CI, container builds, type checking, dependency auditing, and secret
     scanning.
 3. Add licensing and contributor-governance files.
-4. Implement inventory relationships, SSHManager, plugins, jobs, bootstrap, and
-   interfaces only after their designs are approved.
+4. Implement inventory relationships, plugins, jobs, bootstrap, and interfaces
+   only after their designs are approved.
+5. Integrate Linux collection with a future job/polling workflow that submits
+   observations only through `DiscoveryService`.
 
 # Overall Assessment
 
@@ -601,9 +683,9 @@ The Discovery Domain preserves the same layering while keeping observations
 explicitly non-authoritative. Its immutable model, normalized schema, service
 lifecycle, bounded metadata, indexed history, optimistic updates, and expired-only
 cleanup are consistent with the approved design. Self-review regressions cover
-immutable collected facts and reserved synchronization authority. No collector,
-SSH, polling, plugin, job, interface, authentication, or authorization behavior
-was added.
+immutable collected facts and reserved synchronization authority. Collection
+remains observation-only and no polling, plugin, job, interface, authentication,
+or authorization behavior was added.
 
 The SSHManager foundation is the sole remote-access implementation and remains
 fully outside persistence and domain mutation. It uses strict isolated trust,
@@ -612,13 +694,24 @@ structured command arguments, typed safe results, explicit fingerprint-confirmed
 trust, conservative retries, and non-mutating diagnostics. Security review found
 no remaining command-injection, silent-trust, writable-key, symlink, unbounded
 output, unsafe-retry, or secret-logging blocker. No polling, collection,
-bootstrap automation, job, plugin, API, dashboard, authentication, or RBAC feature
-was introduced.
+output, unsafe-retry, or secret-logging blocker. No polling, bootstrap automation,
+job, plugin, API, dashboard, authentication, or RBAC feature was introduced.
+
+The Linux Collector Foundation respects both domains and the SSH boundary. It
+uses the least-privileged monitor identity and fixed structured commands, maps
+only bounded validated facts, continues after isolated failures, and returns an
+unpersisted observation suitable for `DiscoveryService`. Its parsers prefer JSON
+and key/value formats, ignore unknown fields, never inspect output for logging,
+and distinguish optional product absence from degraded core collection. The
+implementation adds no SQL, inventory mutation, subprocess, scheduler, plugin,
+Docker dependency, or network-dependent test. No blocking parser, security,
+performance, maintainability, or extensibility finding remains after self-review.
 
 The repository-only persistence rule is documented in engineering policy,
 architecture, ADR-0006, repository contracts, and README guidance. An automated
 AST boundary test prevents direct SQLite or low-level persistence-manager imports
-from entering future business, SSH, plugin, or job modules.
+from entering future business, SSH, plugin, or job modules and separately prevents
+collectors from gaining repository, subprocess, or inventory-mutation ownership.
 
 The original blocking findings are resolved. Runtime inventory, job, log, and
 backup artifacts are recursively excluded from Git, and malformed environment

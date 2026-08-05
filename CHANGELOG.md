@@ -53,6 +53,13 @@ after its first release.
   changed, and unreachable states; automatic trust-on-first-use is forbidden.
 - Container OpenSSH client and separate read-only admin/monitor key mounts without
   a broad writable SSH mount.
+- Read-only Linux collector with a fixed bounded SSH command catalog, resilient
+  JSON/key-value/text parsers, partial-result handling, typed discovery mapping,
+  and positive Docker, MySQL/MariaDB, Redis, Prometheus, Asterisk, and FreePBX
+  detection.
+- Collector architecture tests and mocked Ubuntu, Debian, Rocky Linux, AlmaLinux,
+  missing-command, timeout, malformed-output, product-detection, and safe-logging
+  unit coverage without network or Docker dependencies.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.
