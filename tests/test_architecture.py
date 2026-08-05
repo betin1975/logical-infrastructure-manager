@@ -271,3 +271,52 @@ def test_collectors_use_services_and_sshmanager_boundaries_only() -> None:
         "collectors may return observations but cannot own SQL, repositories, "
         f"inventory mutation, or subprocess execution: {sorted(set(violations))}"
     )
+
+
+def test_polling_coordinates_services_without_infrastructure_ownership() -> None:
+    """Keep on-demand polling above SSH, repositories, SQL, and subprocesses."""
+    project_root = Path(__file__).resolve().parent.parent
+    polling_root = project_root / "app/polling"
+    forbidden_modules = {
+        "sqlite3",
+        "subprocess",
+        "app.persistence",
+        "app.ssh",
+        "app.discovery.repository",
+        "app.inventory.repository",
+    }
+    forbidden_names = {
+        "DatabaseManager",
+        "DiscoveryRepository",
+        "InventoryRepository",
+        "SQLiteDiscoveryRepository",
+        "SQLiteInventoryRepository",
+        "SSHManager",
+        "TransactionManager",
+    }
+    violations: list[str] = []
+
+    for path in polling_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        relative = str(path.relative_to(project_root))
+        for node in ast.walk(tree):
+            modules: list[str] = []
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                modules = [node.module or ""]
+                names = [alias.name for alias in node.names]
+            if any(
+                module == forbidden
+                or module.startswith(f"{forbidden}.")
+                for module in modules
+                for forbidden in forbidden_modules
+            ) or set(names).intersection(forbidden_names):
+                violations.append(relative)
+
+    assert not violations, (
+        "PollingService may coordinate InventoryService, DiscoveryService, and "
+        "LinuxCollector only; it cannot own SSH, SQL, repositories, persistence, "
+        f"or subprocess behavior: {sorted(set(violations))}"
+    )
