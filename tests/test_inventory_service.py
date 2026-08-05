@@ -252,6 +252,20 @@ def test_service_uses_injected_repository_and_registers_server(
     assert "192.0.2.50" not in str(logger.events)
 
 
+def test_service_reads_server_and_records_verified_bootstrap(
+    service_context: tuple[InventoryService, RepositoryDouble, LoggerDouble],
+) -> None:
+    service, _, logger = service_context
+    server = register(service)
+
+    assert service.get_server(server.uuid) == server
+    bootstrapped = service.record_bootstrap_success(server.uuid)
+
+    assert bootstrapped.last_bootstrap_at == NOW
+    assert bootstrapped.inventory_version == server.inventory_version + 1
+    assert logger.events[-1][1]["operation"] == "bootstrap_success"
+
+
 def test_service_updates_disables_and_enables_server(
     service_context: tuple[InventoryService, RepositoryDouble, LoggerDouble],
 ) -> None:

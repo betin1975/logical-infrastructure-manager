@@ -57,3 +57,47 @@ ssh:
   ssh_executable: /usr/bin/ssh
   scp_executable: /usr/bin/scp
   keyscan_executable: /usr/bin/ssh-keyscan
+
+bootstrap:
+  monitor_username: monitor
+  monitor_home: /var/lib/monitor
+  monitor_shell: /bin/sh
+  collector_path: /usr/local/libexec/lim/remote-health-json
+  collector_version: 1.0.0
+  monitor_public_key: ssh/monitor_ed25519.pub
+  collector_artifact: app/bootstrap/artifacts/remote_health.py
+  authorized_keys_path: /var/lib/monitor/.ssh/authorized_keys
+  authorized_key_options:
+    - restrict
+  key_marker: lim-managed-monitor
+  remote_temp_directory: /tmp
+  account_comment: LIM monitoring account
+  forbidden_groups:
+    - root
+    - wheel
+    - sudo
+    - adm
+    - docker
+    - lxd
+  directory_mode: "0750"
+  ssh_directory_mode: "0700"
+  authorized_keys_mode: "0600"
+  collector_directory_mode: "0755"
+  collector_mode: "0755"
+  command_timeout_seconds: 30
+  transfer_timeout_seconds: 30
+  verification_timeout_seconds: 30
+  maximum_collector_output_bytes: 262144
+  supported_collector_schema_versions:
+    - 1
+  utility_paths:
+    python: /usr/bin/python3
+    sudo: /usr/bin/sudo
+    getent: /usr/bin/getent
+    id: /usr/bin/id
+    useradd: /usr/sbin/useradd
+    usermod: /usr/sbin/usermod
+    gpasswd: /usr/bin/gpasswd
+    passwd: /usr/bin/passwd
+    test: /usr/bin/test
+    rm: /usr/bin/rm

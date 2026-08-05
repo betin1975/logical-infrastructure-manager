@@ -57,3 +57,28 @@ The detailed implementation rules are maintained in `AI_DEVELOPER.md`.
   stdin, closed descriptors, bounded execution time, and bounded output.
 - Password and keyboard-interactive authentication, arbitrary shell text,
   recursive file transfer, and automatic permission escalation are unsupported.
+
+## Remote bootstrap security model
+
+- Administrative public-key access, fingerprint-confirmed host trust, Linux,
+  Python 3.9+, and non-interactive `sudo -n` are prerequisites. Bootstrap never
+  enrolls admin access, accepts passwords, or changes trust.
+- Only `BootstrapService` orchestrates remote provisioning, and every remote
+  operation passes through `SSHManager`. The service has no SQL, repository,
+  discovery, collector, or subprocess access.
+- LIM deploys the monitor public key only. Admin and monitor private keys remain
+  read-only local files and are never returned, transferred, or logged.
+- The monitor account has a locked password and no configured privileged group.
+  LIM's key line uses `restrict` and a forced absolute collector command; unrelated
+  pre-existing authorized keys remain the operator's responsibility.
+- Remote writes validate absolute configured paths, reject symlinks and unexpected
+  file types, stage bounded data, fsync, set explicit owner/mode, and atomically
+  replace the destination. Partial operations are idempotent and retryable.
+- The standalone artifact accepts no arguments, uses fixed read-only commands,
+  runs without a shell or third-party dependency, discards stderr, bounds runtime
+  and output, and emits a versioned bounded JSON document.
+- Bootstrap success is recorded only after account, group, password, ownership,
+  mode, digest, direct execution, strict trust, monitor authentication,
+  forced-command confinement, schema, and host-identity verification succeeds.
+- Logs and typed failures exclude key bodies, authorized-key contents, remote
+  stdout/stderr, collector JSON, credentials, and raw exception text.

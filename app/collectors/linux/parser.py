@@ -315,7 +315,8 @@ def freepbx_product(
 ) -> tuple[tuple[str, str], ...]:
     """Report Asterisk and best-effort FreePBX detection in one namespace."""
     entries: list[tuple[str, str]] = []
-    if asterisk_output and _first_line(asterisk_output).lower() == "active":
+    asterisk_state = _first_line(asterisk_output or "")
+    if asterisk_state and asterisk_state.lower() == "active":
         entries.extend((("asterisk_detected", "true"), ("asterisk_state", "active")))
     version = _first_line(version_output or "")
     if version:

@@ -338,12 +338,35 @@ def test_application_startup_initializes_runtime(
         def initialize(self) -> None:
             events.append("ssh initialized")
 
+    class FakeTransactionManager:
+        def __init__(self, database: object) -> None:
+            events.append("transactions initialized")
+
+    class FakeInventoryRepository:
+        def __init__(self, database: object, transactions: object) -> None:
+            events.append("inventory repository initialized")
+
+    class FakeInventoryService:
+        def __init__(self, repository: object, logger: object) -> None:
+            events.append("inventory service initialized")
+
+    class FakeBootstrapService:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            events.append("bootstrap service constructed")
+
+        def initialize(self) -> None:
+            events.append("bootstrap service initialized")
+
     monkeypatch.setattr(app_main, "ConfigManager", lambda: fake_config)
     monkeypatch.setattr(app_main, "RuntimeManager", FakeRuntimeManager)
     monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
     monkeypatch.setattr(app_main, "DatabaseManager", FakeDatabaseManager)
     monkeypatch.setattr(app_main, "MigrationManager", FakeMigrationManager)
     monkeypatch.setattr(app_main, "SSHManager", FakeSSHManager)
+    monkeypatch.setattr(app_main, "TransactionManager", FakeTransactionManager)
+    monkeypatch.setattr(app_main, "SQLiteInventoryRepository", FakeInventoryRepository)
+    monkeypatch.setattr(app_main, "InventoryService", FakeInventoryService)
+    monkeypatch.setattr(app_main, "BootstrapService", FakeBootstrapService)
 
     assert app_main.main() == 0
     assert events[0] is fake_config
@@ -371,9 +394,17 @@ def test_application_startup_initializes_runtime(
     assert isinstance(events[18], FakeLogger)
     assert events[19] == Path(app_main.__file__).resolve().parent.parent
     assert events[20] == "ssh initialized"
-    assert events[21] == (
+    assert events[21:24] == [
+        "transactions initialized",
+        "inventory repository initialized",
+        "inventory",
+    ]
+    assert "inventory service initialized" in events
+    assert "bootstrap service constructed" in events
+    assert "bootstrap service initialized" in events
+    assert events[-1] == (
         "LIM startup foundation initialized with schema_version=%d "
-        "ssh_initialized=true",
+        "ssh_initialized=true bootstrap_initialized=true",
         (1,),
     )
 

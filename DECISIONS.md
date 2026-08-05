@@ -237,3 +237,44 @@ adding a new ADR that explicitly supersedes it; accepted history is not rewritte
   observations to partial rather than aborting unrelated probes. Optional product
   absence is not an error. Adding polling, persistence orchestration, new operating
   systems, privileged probes, or mutable remote actions requires separate design.
+
+## ADR-0019: Remote bootstrap requires pre-established administrative access
+
+- **Status:** Accepted
+- **Context:** Automatically enrolling an administrator, accepting a password, or
+  trusting a first-seen host would combine identity proof, trust establishment,
+  and privilege escalation in an unattended operation.
+- **Decision:** Bootstrap requires an existing admin public key, explicitly
+  confirmed LIM host trust, Linux, configured absolute utilities, and successful
+  non-interactive `sudo -n`. It neither changes trust nor accepts password text.
+- **Consequences:** Initial access and a least-privilege sudo policy remain
+  operator responsibilities. Failures are typed and safe to retry after the
+  prerequisite is corrected.
+
+## ADR-0020: Monitor access is public-key-only and forced to one collector
+
+- **Status:** Accepted
+- **Context:** A general-purpose monitor shell or deployed private credential
+  would unnecessarily expand the impact of key misuse and host compromise.
+- **Decision:** LIM deploys only the monitor public key. The account password is
+  locked, configured privileged group memberships are removed, and LIM's marked
+  `authorized_keys` line uses OpenSSH `restrict` with one forced absolute
+  standalone collector command. Unrelated key lines are preserved.
+- **Consequences:** Existing unrelated keys remain under operator governance.
+  Post-verification proves monitor authentication and forced-command confinement;
+  private keys never leave LIM's read-only credential root.
+
+## ADR-0021: Remote bootstrap is an idempotent repair plan
+
+- **Status:** Accepted
+- **Context:** SSH interruption can occur between any two remote mutations, while
+  pretending those mutations form a distributed transaction would provide false
+  rollback guarantees.
+- **Decision:** `BootstrapService` executes an explicit 15-step state-aware repair
+  plan. A bounded Python helper validates paths and types and atomically installs
+  the marked key and versioned standard-library Python 3.9+ artifact. Temporary
+  state is cleaned, the complete result is verified, and only then does
+  InventoryService record success.
+- **Consequences:** Partial progress remains safe to inspect and retry rather than
+  being destructively rolled back. Per-target concurrency control, remote schema
+  compatibility policy, and durable bootstrap audit retention remain future work.

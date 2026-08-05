@@ -95,5 +95,3 @@ HOSTNAME_FALLBACK = LinuxCommandSpec(
     5,
     True,
 )
-
-COMMAND_BY_NAME = {spec.name: spec for spec in (*COMMANDS, HOSTNAME_FALLBACK)}

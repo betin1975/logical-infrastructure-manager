@@ -161,6 +161,11 @@ class SSHManager:
             server_uuid,  # type: ignore[arg-type]
         )
 
+    def identity_available(self, identity: SSHIdentity) -> bool:
+        """Return whether one configured identity passes local key validation."""
+        self._require_initialized()
+        return self._identity_available(identity)
+
     def trust_host_key(
         self, target: SSHConnectionTarget, expected_fingerprint: str
     ) -> SSHTrustResult:

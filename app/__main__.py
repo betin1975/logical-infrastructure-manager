@@ -3,9 +3,17 @@
 import sys
 from pathlib import Path
 
+from .bootstrap import BootstrapConfigurationError, BootstrapService
 from .config import ConfigError, ConfigManager
+from .inventory import InventoryService
 from .logging_manager import LoggingManager, LoggingManagerError
-from .persistence import DatabaseManager, MigrationManager, PersistenceError
+from .persistence import (
+    DatabaseManager,
+    MigrationManager,
+    PersistenceError,
+    SQLiteInventoryRepository,
+    TransactionManager,
+)
 from .runtime import RuntimeManager, RuntimeManagerError
 from .ssh import SSHManager, SSHManagerError
 
@@ -49,9 +57,29 @@ def main() -> int:
         logger.exception("LIM SSH foundation initialization failed")
         return 1
 
+    try:
+        transactions = TransactionManager(database)
+        inventory_repository = SQLiteInventoryRepository(database, transactions)
+        inventory_service = InventoryService(
+            inventory_repository,
+            logging_manager.get_logger("inventory"),
+        )
+        bootstrap_service = BootstrapService(
+            config,
+            runtime,
+            ssh_manager,
+            inventory_service,
+            logging_manager.get_logger("bootstrap.service"),
+            application_root=application_root,
+        )
+        bootstrap_service.initialize()
+    except BootstrapConfigurationError:
+        logger.exception("LIM bootstrap foundation initialization failed")
+        return 1
+
     logger.info(
         "LIM startup foundation initialized with schema_version=%d "
-        "ssh_initialized=true",
+        "ssh_initialized=true bootstrap_initialized=true",
         migration_state.schema_version,
     )
     return 0

@@ -212,6 +212,27 @@ public objects.
 - Keep private identities read-only and separate from writable trust data. Never
   generate, overwrite, copy, log, or return private-key contents.
 
+## Remote bootstrap
+
+- `BootstrapService` is the only remote bootstrap orchestrator. It uses
+  `SSHManager` for every command and transfer and `InventoryService` for the sole
+  post-verification inventory update. It never executes SQL, creates repositories,
+  invokes LinuxCollector, creates discovery observations, or schedules itself.
+- Administrative public-key trust on the target and explicit host trust are
+  prerequisites. Never accept a password, enable agent forwarding, install an
+  administrative key, or automatically trust a host during bootstrap.
+- Unattended bootstrap requires `sudo -n`; do not prompt, pass password text, or
+  weaken sudo policy. The monitor account has a locked password, no privileged
+  groups, and a forced-command public key.
+- Transfer only public-key material and reviewed versioned artifacts. Stage to a
+  safe temporary path, reject symlinks and unexpected types, replace atomically,
+  preserve unrelated authorized keys, verify hashes/ownership/modes, and clean up.
+- Remote bootstrap is a sequence of idempotent steps, not a distributed
+  transaction. Stop after a fatal step, report later steps as skipped, preserve
+  safe partial state, and make retries repair rather than duplicate state.
+- Never log public-key bodies, authorized-key files, collector JSON, stdout,
+  stderr, remote temporary contents, or commands carrying staged material.
+
 ## Plugins and jobs
 
 - Plugins implement a versioned interface and declare capabilities and metadata.

@@ -146,6 +146,19 @@ class InventoryService:
             )
         return self._mutate(server_uuid, "update", **changes)
 
+    def get_server(self, server_uuid: UUID | str) -> Server:
+        """Return one active inventory server through the service boundary."""
+        return self._get(server_uuid)
+
+    def record_bootstrap_success(self, server_uuid: UUID | str) -> Server:
+        """Record one fully verified bootstrap completion."""
+        timestamp = self._now()
+        return self._mutate(
+            server_uuid,
+            "bootstrap_success",
+            last_bootstrap_at=timestamp,
+        )
+
     def disable_server(self, server_uuid: UUID | str) -> Server:
         """Disable normal inventory operations for a server."""
         return self._mutate(

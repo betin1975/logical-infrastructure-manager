@@ -314,6 +314,18 @@ def test_hostname_falls_back_without_shell_or_duplicate_retry() -> None:
     assert all("||" not in argument for command in commands for argument in command)
 
 
+def test_invalid_hostnamectl_output_uses_safe_hostname_fallback() -> None:
+    plan = _base_plan()
+    plan[("hostnamectl", "--static")] = PlannedResult(stdout="bad host name\n")
+    plan[("hostname",)] = PlannedResult(stdout="fallback.example.test\n")
+    collector, ssh, _ = _collector(plan)
+
+    observation = collector.collect(make_inventory_server())
+
+    assert observation.hostname == "fallback.example.test"
+    assert ("hostname",) in [request.command for request in ssh.requests]
+
+
 def test_command_catalog_is_fixed_read_only_and_complete() -> None:
     commands = {spec.argv for spec in COMMANDS}
     assert {
@@ -564,3 +576,4 @@ def test_product_detection_requires_positive_evidence() -> None:
         ("freepbx_detected", "true"),
         ("freepbx_version", "17.0"),
     )
+    assert freepbx_product(None, "   \n") == ()

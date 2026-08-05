@@ -26,7 +26,11 @@ from app.ssh import (
 )
 
 from .commands import COMMANDS, HOSTNAME_FALLBACK, LinuxCommand, LinuxCommandSpec
-from .exceptions import LinuxCommandError, LinuxParserError
+from .exceptions import (
+    LinuxCollectorValidationError,
+    LinuxCommandError,
+    LinuxParserError,
+)
 from .models import CollectionIssue, CollectionIssueKind, LinuxFacts
 from .parser import (
     active_product,
@@ -75,8 +79,6 @@ class LinuxCollector:
         uuid_factory: Callable[[], UUID] | None = None,
     ) -> None:
         if not isinstance(username, str) or not username.strip():
-            from .exceptions import LinuxCollectorValidationError
-
             raise LinuxCollectorValidationError("collector SSH username is required")
         self._ssh = ssh_manager
         self._logger = logger
@@ -108,7 +110,7 @@ class LinuxCollector:
         for spec in COMMANDS:
             self._execute(spec, target, logger, outputs, issues, required_failures)
 
-        if LinuxCommand.HOSTNAMECTL not in outputs:
+        if parse_hostname(outputs.get(LinuxCommand.HOSTNAMECTL, "")) is None:
             self._execute(
                 HOSTNAME_FALLBACK,
                 target,
@@ -200,12 +202,12 @@ class LinuxCollector:
     ) -> LinuxFacts:
         values: dict[str, Any] = {}
 
-        hostname_output = outputs.get(LinuxCommand.HOSTNAMECTL) or outputs.get(
-            LinuxCommand.HOSTNAME
-        )
-        values["hostname"] = parse_hostname(hostname_output or "")
+        values["hostname"] = parse_hostname(
+            outputs.get(LinuxCommand.HOSTNAMECTL, "")
+        ) or parse_hostname(outputs.get(LinuxCommand.HOSTNAME, ""))
         values["fqdn"] = parse_hostname(outputs.get(LinuxCommand.FQDN, ""))
         if values["hostname"] is None:
+            self._parser_issue(LinuxCommand.HOSTNAME, issues, required_failures, logger)
             required_failures.add(LinuxCommand.HOSTNAME)
 
         self._parse_one(
@@ -416,13 +418,14 @@ class LinuxCollector:
         hostname = facts.hostname or server.hostname
         os_id = (facts.os_id or "").lower()
         supported = os_id in SUPPORTED_DISTRIBUTIONS
-        raw_metadata = DiscoveryMetadata(
-            (
-                ("commands_degraded", str(len(facts.issues))),
-                ("distribution_supported", str(supported).lower()),
-                ("os_id", os_id or "unknown"),
-            )
-        )
+        metadata_entries = [
+            ("commands_degraded", str(len(facts.issues))),
+            ("distribution_supported", str(supported).lower()),
+            ("os_id", os_id or "unknown"),
+        ]
+        if facts.os_id_like:
+            metadata_entries.append(("os_id_like", facts.os_id_like))
+        raw_metadata = DiscoveryMetadata(tuple(metadata_entries))
         return DiscoveryObservation(
             uuid=self._uuid_factory(),
             server_uuid=server.uuid,

@@ -60,6 +60,15 @@ after its first release.
 - Collector architecture tests and mocked Ubuntu, Debian, Rocky Linux, AlmaLinux,
   missing-command, timeout, malformed-output, product-detection, and safe-logging
   unit coverage without network or Docker dependencies.
+- Idempotent remote `BootstrapService` with an explicit 15-step plan, strict
+  trust/admin/sudo prerequisites, monitor-account create-and-repair behavior,
+  atomic forced-key installation, temporary cleanup, and post-verification.
+- Standalone standard-library Python 3.9+ remote health artifact with fixed
+  read-only commands, bounded execution/output/JSON, typed service state, and no
+  dependency on LIM application packages.
+- Bootstrap configuration, typed results and failures, public-key/artifact local
+  initialization, Docker public-key mount, InventoryService success recording,
+  and comprehensive mocked and executable regression tests.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.
@@ -82,5 +91,9 @@ after its first release.
   `no-new-privileges`, and a read-only root filesystem under Compose.
 - Restricted SQLite database, journal, and backup files to mode `0600`; rejected
   unsafe names, traversal, symlinks, and paths outside runtime-owned directories.
+- Required pre-established admin public-key access, strict host trust, `sudo -n`,
+  locked monitor passwords, removal from configured privileged groups, OpenSSH
+  `restrict` forced commands, atomic remote files, and post-bootstrap verification;
+  no private key, password, raw remote output, or collector document is logged.
 
 [Unreleased]: https://github.com/betin1975/logical-infrastructure-manager/compare/HEAD...HEAD

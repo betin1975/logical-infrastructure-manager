@@ -588,9 +588,17 @@ def test_application_startup_creates_migrated_database_idempotently(
         def initialize(self) -> None:
             pass
 
+    class FakeBootstrapService:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def initialize(self) -> None:
+            pass
+
     monkeypatch.setattr(app_main, "ConfigManager", lambda: stack.config)
     monkeypatch.setattr(app_main, "LoggingManager", FakeLoggingManager)
     monkeypatch.setattr(app_main, "SSHManager", FakeSSHManager)
+    monkeypatch.setattr(app_main, "BootstrapService", FakeBootstrapService)
 
     assert app_main.main() == 0
     assert app_main.main() == 0
@@ -601,12 +609,12 @@ def test_application_startup_creates_migrated_database_idempotently(
     assert log_events == [
         (
             "LIM startup foundation initialized with schema_version=%d "
-            "ssh_initialized=true",
+            "ssh_initialized=true bootstrap_initialized=true",
             (LATEST_SCHEMA_VERSION,),
         ),
         (
             "LIM startup foundation initialized with schema_version=%d "
-            "ssh_initialized=true",
+            "ssh_initialized=true bootstrap_initialized=true",
             (LATEST_SCHEMA_VERSION,),
         ),
     ]

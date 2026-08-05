@@ -5,8 +5,8 @@
 This document defines the target architecture and the boundaries new code must
 respect. LIM is currently a foundation: configuration, runtime, logging, SQLite
 persistence, authoritative server inventory, discovery observation history,
-SSHManager, and a read-only Linux collector exist, while plugins, polling, and
-the job engine remain planned.
+SSHManager, a read-only Linux collector, and remote host bootstrap exist, while
+plugins, polling, and the job engine remain planned.
 The architecture is intentionally explicit before those business capabilities
 are implemented.
 
@@ -48,11 +48,12 @@ app/
   config.py              Layered configuration (implemented)
   runtime.py             Runtime path lifecycle (implemented)
   logging_manager.py     Central logging and redaction (implemented)
+  bootstrap/             Remote monitor-account provisioning (implemented)
   collectors/linux/      Read-only Linux observation collector (implemented)
   inventory/             Immutable model, repository protocol, service
   discovery/             Observation model, repository protocol, service
   persistence/           SQLite policy, transactions, migrations, backups
-  bootstrap.py           Composition root and lifecycle (planned)
+  __main__.py            Current foundation composition root (implemented)
   domain/                Entities, value objects, invariants, domain errors
   application/           Use cases, commands, queries, service interfaces
   infrastructure/
@@ -79,8 +80,9 @@ directory.
 
 ## Bootstrap
 
-Bootstrap is the composition root and will be the only place that constructs the
-application dependency graph. Its responsibilities are:
+Application bootstrap is the composition root and the only place that constructs
+the dependency graph. It is distinct from `BootstrapService`, which provisions a
+remote monitor account. Its responsibilities are:
 
 1. Load and validate configuration.
 2. Construct `RuntimeManager`, then initialize and verify runtime paths and
@@ -90,12 +92,14 @@ application dependency graph. Its responsibilities are:
 4. Construct and initialize `DatabaseManager`, then run `MigrationManager`.
 5. Construct repositories and domain/application services.
 6. Construct the single `SSHManager`.
-7. Discover and validate plugins.
-8. Start the job engine and selected entry point.
-9. Shut down workers, SSH sessions, and database connections in reverse order.
+7. Construct and locally initialize `BootstrapService` without network access.
+8. Discover and validate future plugins.
+9. Start the future job engine and selected entry point.
+10. Shut down workers, SSH sessions, and database connections in reverse order.
 
-Bootstrap will expose a dependency container, preferably a frozen dataclass. It
-must accept injected replacements for deterministic tests.
+The current `app.__main__` is a minimal one-shot composition root. A future
+long-running entry point should expose a frozen dependency container and graceful
+shutdown. Constructors accept injected replacements for deterministic tests.
 
 ## Inventory and database
 
@@ -278,6 +282,49 @@ authentication, DNS, cancellation, command timeout, output-limit, local-process,
 and remote nonzero failures are never automatically retried. Diagnostics inspect
 trust without mutation and attempt monitor authentication only for a trusted host.
 
+## Remote bootstrap
+
+`BootstrapService` is an application service for preparing the constrained
+monitor identity on one existing inventory target. It is not the application
+composition root. It depends on `SSHManager`, `InventoryService`, configuration,
+runtime paths, and contextual logging; it imports neither repositories,
+persistence, discovery, nor `LinuxCollector`. SSHManager remains the only remote
+transport, and InventoryService remains the only inventory mutation boundary.
+
+Initialization is deliberately local: startup validates the configured public
+key, standalone artifact, paths, modes, utility paths, schema versions, and
+identity availability without making a network connection. An explicit request
+then executes a typed 15-step plan: validate inventory and identities, verify
+strict trust and admin authentication, establish Linux and `sudo -n`
+prerequisites, inspect/create/repair the monitor account, prepare directories,
+stage files, atomically install the marked forced key and collector, clean
+temporary state, verify the complete result, and finally record success.
+
+The admin public key must already be installed by an operator. Bootstrap never
+accepts passwords, enables agent forwarding, modifies host trust, or transfers a
+private key. The monitor account has a locked password and is removed from the
+configured privileged groups. Its LIM-owned authorized-key line uses `restrict`
+plus a forced absolute collector command. A bounded remote Python helper performs
+path/type checks and atomic replacement while preserving all unrelated key lines.
+Every mutating step is idempotent, and failed partial state is safe to retry.
+The default shell is `/bin/sh` because OpenSSH evaluates a forced command through
+the account's shell; the `restrict` option, forced command, locked password, and
+absence of privileged groups constrain that necessary shell capability.
+
+The deployed artifact is a self-contained, standard-library Python 3.9+ program.
+It accepts no arguments, runs a fixed read-only command catalog without a shell,
+discards stderr, bounds time/output/document size, distinguishes absent, inactive,
+and unknown services, and emits one versioned JSON document. Post-verification
+checks account ownership, password lock, forbidden groups, file modes/types,
+artifact digest, direct execution, monitor authentication, forced-command
+confinement, schema/version, and plausible host identity. Only complete
+verification permits `InventoryService.record_bootstrap_success()`.
+
+Bootstrap is a repair workflow, not a distributed transaction: it does not roll
+back an account created before a later failure. Temporary staging is cleaned on
+both success and failure, and cleanup failures never hide the primary typed
+failure. Concurrent bootstrap of the same target is not yet serialized.
+
 ## Linux collector
 
 The Linux collector is an application-layer adapter between authoritative target
@@ -443,8 +490,8 @@ functionality in this foundation change:
    implementing provider plugins.
 6. Define the durable job state machine, recovery, idempotency, retries,
    cancellation, concurrency limits, retention, and artifact cleanup.
-7. Implement bootstrap and graceful shutdown after the first real application
-   entry point is selected.
+7. Replace the one-shot composition root with a frozen dependency container and
+   graceful shutdown after the first long-running entry point is selected.
 8. Select and threat-model the operator interface (CLI, HTTP API, or UI),
    including authentication, authorization, CSRF/session policy where relevant,
    rate limits, and audit requirements.
@@ -468,6 +515,13 @@ functionality in this foundation change:
     or service artifact.
 18. Define runtime ownership, disk quotas, backup retention, disaster recovery,
     and upgrade/rollback procedures for supported deployments.
+19. Define and ship a least-privilege admin sudoers policy for bootstrap instead
+    of relying on an externally provisioned general `sudo -n` capability.
+20. Add per-target bootstrap serialization so two operators cannot race an
+    otherwise atomic `authorized_keys` repair, and define operator-visible audit
+    retention for bootstrap results.
+21. Test the standalone artifact across the supported distribution/Python matrix
+    and define its independent schema/version compatibility and upgrade window.
 19. Add integration tests using disposable SQLite databases and SSH test servers;
     keep them isolated from the default unit suite.
 20. Convert placeholder provider directories into real plugins only after the

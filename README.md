@@ -7,7 +7,8 @@ automation through controlled SSH access, durable jobs, and provider plugins.
 > **Project status:** foundation development. Configuration, runtime, centralized
 > logging, SQLite persistence, authoritative server inventory, discovery
 > observation history, the secure SSHManager, and the first read-only Linux
-> collector are implemented and tested. Plugins, polling, jobs, and user-facing
+> collector and remote Bootstrap Service are implemented and tested. Plugins,
+> polling, jobs, and user-facing
 > interfaces remain planned; they are not production features yet.
 
 ## Design principles
@@ -15,7 +16,7 @@ automation through controlled SSH access, durable jobs, and provider plugins.
 - SQLite is the authoritative inventory.
 - Business logic reaches persistence only through injected repository interfaces;
   SSH, plugins, and jobs never execute SQL.
-- `SSHManager` will be the only SSH implementation.
+- `SSHManager` is the only SSH implementation.
 - Plugins adapt providers but do not own inventory, credentials, or orchestration.
 - Bootstrap constructs dependencies; components prefer dependency injection.
 - Runtime paths come from configuration and runtime state never enters Git.
@@ -30,6 +31,9 @@ and [AI_DEVELOPER.md](AI_DEVELOPER.md) for permanent contribution rules.
 - `pip` and `venv`
 - Docker with Compose v2, optionally
 - System OpenSSH client tools (`ssh`, `scp`, and `ssh-keyscan`)
+
+Managed Linux targets require Python 3.9 or newer for the standalone health
+collector; the target does not install LIM or any third-party Python package.
 
 ## Development setup
 
@@ -288,6 +292,29 @@ optional product or systemd does not fail collection, while failed or malformed
 core facts produce a pending partial observation. Command output, stderr,
 credentials, and key material are never logged or copied into raw metadata.
 
+## Remote bootstrap
+
+`app.bootstrap.BootstrapService` is the sole remote provisioning orchestrator.
+It accepts an active, enabled, managed inventory `Server` plus configured admin
+and monitor usernames. Bootstrap requires pre-established admin public-key
+access, explicitly trusted host keys, Linux, Python 3.9 or newer, and unattended
+`sudo -n`. It never accepts a password, trusts a host, deploys a private key, or
+executes SQL.
+
+The service runs an explicit 15-step, fail-closed plan. It creates or repairs a
+dedicated monitor account with a locked password, removes configured privileged
+group memberships, installs only the monitor public key, and deploys the
+standalone read-only collector. LIM's marked key entry uses OpenSSH `restrict`
+and a forced collector command. Unrelated `authorized_keys` entries are preserved
+and the updated file is atomically replaced.
+
+Every remote mutation is retry-safe and followed by account, mode, ownership,
+hash, authentication, forced-command, JSON-schema, and host-identity checks.
+Primary failures remain visible if cleanup also fails. Only a completely verified
+run records the bootstrap timestamp through `InventoryService`; all persistence
+still crosses its repository interface. Application startup validates local
+bootstrap configuration and artifacts only—it never contacts a host.
+
 ## Tests and quality checks
 
 Run the complete local validation suite before submitting changes:
@@ -312,7 +339,8 @@ docker compose run --rm lim
 
 The image runs as a non-root user, installs the OpenSSH client, excludes secrets
 and runtime state from its build context, and uses a read-only root filesystem.
-Compose mounts admin and monitor keys as separate read-only files while
+Compose mounts admin and monitor private keys and the monitor public key as
+separate read-only files while
 `runtime/` remains writable for application-owned `known_hosts`, SQLite, logs,
 and backups. There is no broad writable SSH mount. There is deliberately no port
 or health check until LIM has an approved long-running interface.
@@ -321,6 +349,7 @@ or health check until LIM has an approved long-running interface.
 
 ```text
 app/                 Application code and future composition root
+app/bootstrap/       Remote monitor-account provisioning and standalone artifact
 app/collectors/      Read-only collectors returning discovery observations
 config/              Versioned defaults and local configuration example
 plugins/             Future provider adapters

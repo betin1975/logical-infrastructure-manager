@@ -207,6 +207,10 @@ def test_initialization_is_idempotent_and_never_contacts_hosts(tmp_path: Path) -
     assert manager.is_initialized
     assert runner.arguments == []
     assert stat.S_IMODE(manager.settings.known_hosts.stat().st_mode) == 0o600
+    assert manager.identity_available(SSHIdentity.ADMIN)
+    assert manager.identity_available(SSHIdentity.MONITOR)
+    manager.settings.monitor_private_key.unlink()
+    assert not manager.identity_available(SSHIdentity.MONITOR)
     assert len(logger.records) == 2
 
 
@@ -763,6 +767,7 @@ def test_container_layout_separates_read_only_keys_from_writable_trust() -> None
     assert {item["target"] for item in key_mounts} == {
         "/opt/lim/ssh/lim_admin_ed25519",
         "/opt/lim/ssh/monitor_ed25519",
+        "/opt/lim/ssh/monitor_ed25519.pub",
     }
     assert all(item["read_only"] is True for item in key_mounts)
     dockerfile = (project_root / "Dockerfile").read_text(encoding="utf-8")

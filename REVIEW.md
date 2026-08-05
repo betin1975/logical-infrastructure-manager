@@ -3,7 +3,7 @@
 This document records the completed self-review of all changes currently made on
 this branch, including the Configuration Manager, Runtime Manager, Logging
 Foundation, Persistence Foundation, Inventory and Discovery domains, SSHManager,
-and Linux Collector Foundation. The review covers architecture, security,
+Linux Collector Foundation, and Bootstrap Service Foundation. The review covers architecture, security,
 maintainability, tests, Docker and Git practices, remaining technical debt, and
 release readiness.
 
@@ -33,6 +33,13 @@ bounded parser inputs, partial-failure behavior, positive product detection, and
 architecture tests preserve the established Inventory, Discovery, SSH, and
 persistence boundaries. It adds no scheduler, direct persistence, inventory
 mutation, plugin behavior, or container dependency.
+
+Issue #9 adds an idempotent remote Bootstrap Service with a typed 15-step plan.
+It requires pre-established admin-key access, strict LIM-owned trust, Linux, and
+`sudo -n`; installs only a restricted monitor public key and a standalone bounded
+collector; verifies the resulting account, files, authentication, forced command,
+schema, and host identity; and records success only through InventoryService.
+Ordinary application startup performs local validation and no network access.
 
 The architectural direction is appropriate for an early-stage infrastructure
 manager: a modular monolith, inward dependency flow, SQLite as the authoritative
@@ -87,6 +94,9 @@ version-enforcement, and documentation concerns remain.
 - `app/collectors/` owns the stateless collector boundary; its Linux package
   defines the fixed command catalog, safe parsers, validation, internal typed
   facts, exceptions, and observation mapping.
+- `app/bootstrap/` owns typed bootstrap requests, plans, results, failures,
+  validation, atomic remote helper scripts, orchestration, and the standalone
+  versioned Python 3.9+ health artifact.
 - `config/default.yml` provides versioned, non-secret defaults.
 - `config/local.yml.example` demonstrates local machine-specific overrides.
 - `plugins/README.md` records the restrictions on future provider plugins.
@@ -124,6 +134,16 @@ version-enforcement, and documentation concerns remain.
   hostname fallback, command policy, timeouts, retries, partial failures,
   malformed output, missing Docker/systemd, product detection, discovery mapping,
   and safe logging through an SSHManager double.
+- `tests/test_bootstrap_service.py` verifies prerequisites, ordered/fatal plan
+  behavior, account creation and repair, idempotency, deployment, cleanup,
+  verification, InventoryService integration, and safe failures/logging through
+  protocol-compatible doubles.
+- `tests/test_bootstrap_scripts.py` executes the remote helper against temporary
+  paths to verify atomic key preservation/replacement, idempotency, and symlink,
+  unsafe-path, invalid-key, and unknown-action rejection.
+- `tests/test_remote_health_artifact.py` verifies Python 3.9 grammar, supported
+  distributions, bounded execution/document output, required versus optional
+  failure behavior, service-state distinctions, and credential exclusion.
 
 ## Modified
 
@@ -146,6 +166,16 @@ version-enforcement, and documentation concerns remain.
 - `README.md`, `ARCHITECTURE.md`, `INSTALL.md`, `DECISIONS.md`, and `CHANGELOG.md`
   document the Linux collector boundary, supported distributions, command and
   parser strategy, product detection, limitations, and ADR-0018.
+- `app/__main__.py`, `app/inventory/service.py`, and `app/ssh/manager.py` now
+  compose local bootstrap validation, provide a narrow bootstrap-success
+  transition, and expose validated identity availability without leaking paths.
+- `config/default.yml` and `config/local.yml.example` define non-secret bootstrap
+  policy and local public-key configuration.
+- `docker-compose.yml` separately mounts the monitor public key read-only.
+- `README.md`, `ARCHITECTURE.md`, `AI_DEVELOPER.md`, `DECISIONS.md`, `SECURITY.md`,
+  `CHANGELOG.md`, `INSTALL.md`, and `UPGRADE.md` document bootstrap prerequisites,
+  boundaries, security, idempotency, partial failure, artifact compatibility, and
+  deployment layout.
 
 # Architecture Review
 
@@ -158,9 +188,9 @@ version-enforcement, and documentation concerns remain.
 - `SSHManager` is reserved as the only SSH implementation. Preventing jobs and
   plugins from creating SSH clients will centralize host verification, credentials,
   timeouts, cancellation, pooling, output limits, and audit behavior.
-- Bootstrap is correctly defined as the composition root and future lifecycle
-  owner. Dependency injection is preferred over global clients and service
-  locators.
+- Application bootstrap is correctly defined as the composition root and future
+  lifecycle owner, distinct from the remote `BootstrapService`. Dependency
+  injection is preferred over global clients and service locators.
 - Plugins are treated as provider adapters rather than independent applications
   or alternate inventory stores.
 - Durable jobs, repositories, migrations, and interfaces are documented without
@@ -468,6 +498,71 @@ output not marking partial, one SSHManager command exception aborting remaining
 probes, unbounded parser input from test doubles, and accidental exposure risk
 from inspecting stderr. No blocking collector finding remains.
 
+## Bootstrap Service self-review
+
+The final review traced every prerequisite, mutation, cleanup, and verification
+path as a senior Linux, SSH, and application-security review. No blocking finding
+remains.
+
+- **Architecture:** `BootstrapService` receives SSHManager and InventoryService;
+  it imports no subprocess, SQLite, repository, discovery, or LinuxCollector code.
+  The standalone remote artifact is the sole deliberate subprocess exception and
+  cannot import LIM packages. AST tests enforce both boundaries.
+- **User and group handling:** an absent account is created with the configured
+  home, shell, comment, system-user policy, and locked password. An existing
+  account with the LIM ownership comment is repaired; a conflicting account fails
+  closed. Final verification rechecks passwd identity, home, shell, password lock,
+  and every configured forbidden group. The `/bin/sh` default is necessary for
+  OpenSSH forced-command evaluation and is constrained by the forced key.
+- **Sudo assumptions:** admin authentication and each configured utility are
+  checked before mutation, followed by `sudo -n true`. No password or token input
+  exists. The absence of a shipped least-privilege sudoers template is documented
+  as operational technical debt, not silently treated as solved.
+- **Authorized keys:** a bounded helper validates the public key and LIM marker,
+  preserves unrelated lines, removes all stale/duplicate LIM-owned lines, writes
+  through a same-directory temporary file, fsyncs, sets owner/mode, and atomically
+  replaces the destination. Tests execute first, repeat, stale-key, preservation,
+  symlink, unsafe-path, and invalid-key cases.
+- **Forced command:** the generated entry uses configured OpenSSH `restrict` and
+  exactly one quoted absolute collector path. Verification authenticates with the
+  monitor identity and proves an arbitrary requested marker command is not
+  honored while valid collector JSON is returned.
+- **Ownership and modes:** the service creates and verifies the account home,
+  `.ssh`, `authorized_keys`, collector directory, and collector as expected
+  regular files/directories with configured owner and restrictive modes. Unsafe
+  symlinks and unexpected types fail closed before replacement.
+- **Artifact:** the deployed program is standalone, standard-library-only,
+  Python 3.9 grammar-compatible, argument-free, read-only, shell-free, bounded by
+  command time/output/document size, and versioned by collector and JSON schema.
+  Its service model distinguishes installed-active, installed-inactive,
+  not-installed, and unknown/permission failure. Stderr is discarded.
+- **Idempotency and partial failure:** every mutation compares or safely repairs
+  current state. Repeat execution neither duplicates the account/key nor rewrites
+  unchanged artifacts and avoids an unnecessary inventory version. Bootstrap is
+  explicitly a repair plan, not a false distributed transaction; partial state
+  is safe to retry, temporary files are cleaned, and a cleanup error cannot hide
+  the primary failure.
+- **Private keys and logging:** neither private identity can enter a request,
+  transfer, command, result, or message. Public-key bodies, authorized-key data,
+  remote stdout/stderr, collector JSON, artifact contents, credentials, and raw
+  exception text are absent from logs and typed failures. Regression tests use
+  sentinel secrets and inspect both result text and captured contextual logs.
+- **Verification and inventory:** strict trust is checked before and after remote
+  changes and is never mutated. Collector digest, direct sudo-as-monitor output,
+  monitor authentication, forced-command confinement, schema/version, and host
+  identity all must pass before the narrow
+  `InventoryService.record_bootstrap_success()` operation is called. A failure
+  never updates inventory.
+- **Startup and Docker:** startup validates local paths, keys, artifact, SSH
+  identities, and settings only. It performs no remote operation. Compose keeps
+  the admin private key, monitor private key, and monitor public key as separate
+  read-only mounts while runtime trust/data remains the only writable state.
+
+Non-blocking limitations are per-target concurrent repair races, the externally
+managed breadth of admin sudo rights, lack of disposable multi-distribution SSH
+integration tests on this Docker-less host, and the need for an explicit artifact
+schema compatibility window. These are recorded below.
+
 # Technical Debt
 
 ## Configuration
@@ -529,6 +624,28 @@ from inspecting stderr. No blocking collector finding remains.
   addition to existing SSH byte and discovery metadata limits before polling
   untrusted high-cardinality hosts.
 
+## Bootstrap Service
+
+- Define and ship a least-privilege sudoers policy covering only the configured
+  bootstrap utilities and argument shapes; current unattended sudo capability is
+  an explicitly external prerequisite.
+- Add a per-target lock or durable orchestration owner before concurrent dashboard
+  requests are possible; atomic replacement prevents corruption but two valid
+  simultaneous key repairs can still produce last-writer-wins behavior.
+- Define remote collector schema/version compatibility, staged rollout, downgrade,
+  and retention policy before more than one artifact version is supported.
+- Add disposable OpenSSH integration coverage across Ubuntu, Debian, Rocky Linux,
+  and AlmaLinux with their supported OpenSSH/systemd/Python versions when Docker
+  CI is available.
+- Define durable, redacted bootstrap audit records and operator authorization
+  before exposing bootstrap through a UI or job engine.
+- Evaluate whether an existing LIM-owned account whose numeric UID/GID changes
+  outside LIM needs an approved conflict policy beyond final ownership repair.
+- If bootstrap gains additional platforms or actions, split the currently
+  cohesive but large service module into injected account, deployment, and
+  verification collaborators; avoid doing so before those boundaries have a
+  second use case.
+
 ## SSH, plugins, and jobs
 
 - Add Windows-specific process termination only if Windows becomes a supported
@@ -544,8 +661,8 @@ from inspecting stderr. No blocking collector finding remains.
 
 ## Operations and delivery
 
-- Implement bootstrap and graceful shutdown after selecting the first real entry
-  point.
+- Replace the one-shot composition root with a dependency container and graceful
+  shutdown after selecting the first long-running entry point.
 - Select and threat-model the operator interface and its authentication and
   authorization model.
 - Evaluate JSON output or external aggregation only when operational requirements
@@ -567,11 +684,11 @@ from inspecting stderr. No blocking collector finding remains.
 The implemented suite was run against CPython 3.12.13 with these results:
 
 ```text
-312 tests passed
-91.92% branch-aware coverage
+365 tests passed
+90.47% branch-aware coverage
 Ruff passed
 Python compilation passed
-Configuration, runtime, logging, persistence, inventory, discovery, SSH, Linux collector, startup, container-layout, and concurrency tests passed
+Configuration, runtime, logging, persistence, inventory, discovery, SSH, Linux collector, Bootstrap Service, standalone remote artifact, startup, container-layout, and concurrency tests passed
 Compose YAML structural parsing passed
 git diff --check passed
 ```
@@ -618,6 +735,10 @@ also show plain `python -m pytest`, which does not enforce coverage.
   supported distribution; the current suite deliberately mocks SSHManager.
 - High-cardinality interface, disk, service, and container observation limits and
   performance tests once product limits are approved.
+- End-to-end bootstrap through disposable OpenSSH targets across each supported
+  distribution, OpenSSH version, and Python baseline; Docker was unavailable.
+- Concurrent bootstrap attempts against the same target and interruption at each
+  remote mutation boundary; the unit suite covers representative partial retry.
 
 # Remaining TODOs
 
@@ -643,10 +764,12 @@ also show plain `python -m pytest`, which does not enforce coverage.
 2. Add CI, container builds, type checking, dependency auditing, and secret
     scanning.
 3. Add licensing and contributor-governance files.
-4. Implement inventory relationships, plugins, jobs, bootstrap, and interfaces
-   only after their designs are approved.
+4. Implement inventory relationships, plugins, jobs, and interfaces only after
+   their designs are approved.
 5. Integrate Linux collection with a future job/polling workflow that submits
    observations only through `DiscoveryService`.
+6. Define least-privilege admin sudoers, per-target bootstrap serialization, and
+   artifact compatibility before dashboard-driven or concurrent bootstrap.
 
 # Overall Assessment
 
@@ -693,9 +816,8 @@ read-only identities, bounded environment-independent OpenSSH processes,
 structured command arguments, typed safe results, explicit fingerprint-confirmed
 trust, conservative retries, and non-mutating diagnostics. Security review found
 no remaining command-injection, silent-trust, writable-key, symlink, unbounded
-output, unsafe-retry, or secret-logging blocker. No polling, collection,
-output, unsafe-retry, or secret-logging blocker. No polling, bootstrap automation,
-job, plugin, API, dashboard, authentication, or RBAC feature was introduced.
+output, unsafe-retry, or secret-logging blocker. No polling, job, plugin, API,
+dashboard, password authentication, or RBAC feature was introduced.
 
 The Linux Collector Foundation respects both domains and the SSH boundary. It
 uses the least-privileged monitor identity and fixed structured commands, maps
@@ -706,6 +828,16 @@ and distinguish optional product absence from degraded core collection. The
 implementation adds no SQL, inventory mutation, subprocess, scheduler, plugin,
 Docker dependency, or network-dependent test. No blocking parser, security,
 performance, maintainability, or extensibility finding remains after self-review.
+
+The Bootstrap Service preserves the same boundaries while providing the narrowly
+approved remote repair workflow. Pre-existing admin access and strict trust are
+mandatory, monitor access is locked to the deployed read-only artifact, private
+keys never move, all remote writes are bounded and atomic, and exhaustive
+post-verification gates the only InventoryService mutation. The standalone
+artifact is compatible with Python 3.9 grammar and has no LIM or third-party
+runtime dependency. No blocking user/group, sudo, authorization-file,
+forced-command, permissions, symlink, idempotency, partial-failure, key-handling,
+logging, or architecture finding remains after self-review.
 
 The repository-only persistence rule is documented in engineering policy,
 architecture, ADR-0006, repository contracts, and README guidance. An automated
