@@ -66,6 +66,15 @@ and `DiscoveryService`; direct SQL and manual database edits are unsupported.
 Discovery cleanup deletes only explicitly expired observations older than a
 caller-provided retention cutoff.
 
+The Linux collector requires no additional Python package, daemon, or local
+Docker socket. It uses the initialized `SSHManager`, an explicitly injected
+monitor username, and already trusted Linux hosts. Collection is not wired into
+startup or a scheduler. Tests mock SSHManager and require neither credentials nor
+network access. Supported distributions are Ubuntu, Debian, Rocky Linux, and
+AlmaLinux; other Linux distributions are best effort. The monitor account needs
+permission to run the documented read-only commands, but should not receive sudo
+or write privileges for collection.
+
 ## Docker
 
 Docker Compose currently builds a one-shot foundation initialization image:

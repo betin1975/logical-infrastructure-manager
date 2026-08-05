@@ -4,8 +4,9 @@
 
 This document defines the target architecture and the boundaries new code must
 respect. LIM is currently a foundation: configuration, runtime, logging, SQLite
-persistence, authoritative server inventory, and discovery observation history
-exist, while SSH, plugins, polling, and the job engine remain planned.
+persistence, authoritative server inventory, discovery observation history,
+SSHManager, and a read-only Linux collector exist, while plugins, polling, and
+the job engine remain planned.
 The architecture is intentionally explicit before those business capabilities
 are implemented.
 
@@ -47,6 +48,7 @@ app/
   config.py              Layered configuration (implemented)
   runtime.py             Runtime path lifecycle (implemented)
   logging_manager.py     Central logging and redaction (implemented)
+  collectors/linux/      Read-only Linux observation collector (implemented)
   inventory/             Immutable model, repository protocol, service
   discovery/             Observation model, repository protocol, service
   persistence/           SQLite policy, transactions, migrations, backups
@@ -276,6 +278,38 @@ authentication, DNS, cancellation, command timeout, output-limit, local-process,
 and remote nonzero failures are never automatically retried. Diagnostics inspect
 trust without mutation and attempt monitor authentication only for a trusted host.
 
+## Linux collector
+
+The Linux collector is an application-layer adapter between authoritative target
+identity and remote observation. It receives a `Server`, `SSHManager`, contextual
+logger, and injected monitor username. It selects the server's management address
+when present, otherwise its primary address, and always uses `SSHIdentity.MONITOR`.
+It returns a pending immutable `DiscoveryObservation`; the caller owns submission
+to `DiscoveryService` and the later successful or failed lifecycle transition.
+
+The collector owns a closed catalog of read-only commands. Each command is a
+structured argument tuple and declares a timeout. SSHManager remains responsible
+for strict trust, credentials, byte limits, transport retries, and execution.
+The collector performs no additional retry, so one collection request cannot
+multiply SSHManager's configured retry policy. Shell fallback is modeled as
+sequential structured calls, never as `||` or arbitrary shell text.
+
+Parsing is isolated in pure functions. JSON is used for block devices, interfaces,
+Docker versions, and containers; `/etc/os-release` is parsed as data without
+evaluation; other text is split by semantic delimiters or tokens rather than
+fixed column widths. Unknown fields and malformed nested records are ignored when
+safe. Malformed required output marks the observation partial; a missing optional
+product command does not. Raw command output and stderr are neither persisted nor
+logged. Bounded raw metadata contains only an OS identifier, supported-distribution
+flag, and degraded-command count.
+
+Ubuntu, Debian, Rocky Linux, and AlmaLinux are the verified distribution set.
+Other Linux distributions are best effort. Product detection requires positive
+evidence and remains observational: Docker, MySQL/MariaDB, Redis, Prometheus,
+Asterisk, and FreePBX detection never changes inventory. Collectors cannot import
+repositories, persistence managers, subprocess, or `InventoryService`; automated
+architecture tests enforce that boundary.
+
 ## Plugins
 
 Plugins adapt external systems such as Linux, Docker, Cisco, FreePBX, MySQL, and
@@ -399,11 +433,12 @@ functionality in this foundation change:
    connections, provider identity, and ownership, before extending schema version
    2.
 2. Define discovery-to-inventory provenance, merge/conflict and promotion policy,
-   bulk operations, and retry behavior before automated collection is added.
+   bulk operations, and collection orchestration before automated polling is
+   added.
 3. Define production backup scheduling, retention, quotas, off-host copies, and
    destructive restore orchestration with operator confirmation and rollback.
-4. Design and implement the sole `SSHManager`, including host-key policy,
-   credential abstraction, timeouts, cancellation, output limits, and audit data.
+4. Define collector configuration, command-set compatibility/versioning, and a
+   production integration workflow that records through `DiscoveryService`.
 5. Define a versioned plugin manifest and typed capability contract before
    implementing provider plugins.
 6. Define the durable job state machine, recovery, idempotency, retries,

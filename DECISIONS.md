@@ -219,3 +219,21 @@ adding a new ADR that explicitly supersedes it; accepted history is not rewritte
 - **Consequences:** LIM does not generate, copy, rotate, return, or log private
   keys. Compose uses individual read-only mounts and has no broad writable SSH
   mount; host files must already have secure ownership and mode.
+
+## ADR-0018: Linux collection is stateless and observation-only
+
+- **Status:** Accepted
+- **Context:** The first remote collector needs inventory targeting and SSH
+  execution without becoming an alternate authority, persistence gateway, job
+  scheduler, or second SSH implementation.
+- **Decision:** `LinuxCollector` accepts an immutable inventory `Server`, uses the
+  injected `SSHManager` with the monitor identity, executes only its fixed
+  read-only command catalog, and returns a pending immutable
+  `DiscoveryObservation`. It never receives a repository, persistence manager,
+  `InventoryService`, scheduler, plugin runtime, or subprocess capability. The
+  caller must pass returned observations through `DiscoveryService`.
+- **Consequences:** Command timeouts are explicit while trust, output bounds, and
+  transport retries remain owned by SSHManager. Parser failures degrade core
+  observations to partial rather than aborting unrelated probes. Optional product
+  absence is not an error. Adding polling, persistence orchestration, new operating
+  systems, privileged probes, or mutable remote actions requires separate design.

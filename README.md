@@ -5,10 +5,10 @@ an authoritative infrastructure inventory and safely coordinating inspection and
 automation through controlled SSH access, durable jobs, and provider plugins.
 
 > **Project status:** foundation development. Configuration, runtime, centralized
-> logging, SQLite persistence, authoritative server inventory, and discovery
-> observation history, and the secure SSHManager foundation are implemented and
-> tested. Plugins, polling, jobs, and user-facing interfaces remain planned; they
-> are not production features yet.
+> logging, SQLite persistence, authoritative server inventory, discovery
+> observation history, the secure SSHManager, and the first read-only Linux
+> collector are implemented and tested. Plugins, polling, jobs, and user-facing
+> interfaces remain planned; they are not production features yet.
 
 ## Design principles
 
@@ -213,7 +213,8 @@ JSON inventory blobs or destructive delete path are provided.
 `app.discovery` represents collected facts, never accepted infrastructure truth.
 Immutable observations retain their source, collection timing, host facts,
 interfaces, addresses, storage, services, packages, containers, bounded metadata,
-and lifecycle state. No collector, SSH client, polling loop, or plugin is included.
+and lifecycle state. Collectors produce these values, but no collector may persist
+them directly or update inventory.
 
 `DiscoveryService` records pending observations and controls successful, failed,
 and expired transitions. It retrieves newest-first history and explicitly purges
@@ -262,6 +263,31 @@ and returned with truncation and failure classifications. Only connection refusa
 and connection timeout are retried; authentication, trust, command timeout, output
 limits, and remote nonzero exits are never automatically retried.
 
+## Linux collector
+
+`app.collectors.linux.LinuxCollector` accepts an immutable inventory `Server`,
+uses the injected `SSHManager` with the monitor identity, and returns an
+unpersisted `DiscoveryObservation`. A caller passes that observation to
+`DiscoveryService`; collection never executes SQL, writes inventory, schedules
+polling, bootstraps hosts, or invokes plugins.
+
+The collector supports Ubuntu, Debian, Rocky Linux, and AlmaLinux. Other Linux
+distributions are parsed on a best-effort basis and explicitly marked unsupported
+in bounded observation metadata. It collects hostname/FQDN, OS identity, kernel,
+architecture, CPU, memory, filesystems, block devices, interfaces, addresses,
+listening ports, running systemd services, Docker containers, and positive
+detection evidence for Docker, MySQL/MariaDB, Redis, Prometheus, Asterisk, and
+FreePBX.
+
+Every command is a fixed executable/argument tuple with its own timeout; output
+and retries remain bounded by `SSHManager`. The shell expression
+`hostnamectl --static || hostname` is represented as two safe requests, with the
+second executed only as a fallback. JSON and key/value formats are preferred;
+unavoidable tables are parsed by tokens rather than fixed widths. A missing
+optional product or systemd does not fail collection, while failed or malformed
+core facts produce a pending partial observation. Command output, stderr,
+credentials, and key material are never logged or copied into raw metadata.
+
 ## Tests and quality checks
 
 Run the complete local validation suite before submitting changes:
@@ -295,6 +321,7 @@ or health check until LIM has an approved long-running interface.
 
 ```text
 app/                 Application code and future composition root
+app/collectors/      Read-only collectors returning discovery observations
 config/              Versioned defaults and local configuration example
 plugins/             Future provider adapters
 tests/               Automated tests
