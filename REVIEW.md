@@ -970,3 +970,17 @@ items and should be handled in deliberately scoped follow-up work.
 - **Blocking issues:** none found. The CLI preserves service ownership and the
   reusable composition performs local initialization only; network operations
   occur solely when an operator explicitly invokes trust, bootstrap, or poll.
+
+## Forced-command polling integration
+
+- Polling composition now injects a dedicated forced-command Linux collector.
+  It makes one bounded SSHManager request with `SSHIdentity.MONITOR`, validates
+  the standalone schema-version-1 health document, and maps it to the existing
+  immutable `DiscoveryObservation`; the command-based LinuxCollector is unchanged.
+- The adapter rejects failed SSH execution, invalid JSON, unsupported schemas,
+  excessive output, and host identity mismatches. It logs only fixed lifecycle
+  messages and safe identifiers, never the JSON document or SSH output.
+- Focused collector, polling, composition, and architecture tests passed: `27
+  passed`. Ruff passed for all affected Python files.
+- No blocking issue remains. Scheduling, durable jobs, persistence schemas,
+  bootstrap, trust handling, and CLI behavior remain intentionally unchanged.

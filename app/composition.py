@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .bootstrap import BootstrapConfigurationError, BootstrapService
-from .collectors.linux import LinuxCollector, LinuxCollectorError
+from .collectors.linux import ForcedCommandLinuxCollector, LinuxCollectorError
 from .config import ConfigError, ConfigManager, ConfigurationManager
 from .discovery import DiscoveryError, DiscoveryService
 from .inventory import InventoryError, InventoryService
@@ -46,7 +46,7 @@ class ApplicationServices:
     discovery_service: DiscoveryService
     ssh_manager: SSHManager
     bootstrap_service: BootstrapService
-    linux_collector: LinuxCollector
+    linux_collector: ForcedCommandLinuxCollector
     polling_service: PollingService
 
 
@@ -121,10 +121,12 @@ def build_application_services(
         bootstrap_service.initialize()
 
         stage = "polling"
-        linux_collector = LinuxCollector(
+        linux_collector = ForcedCommandLinuxCollector(
             ssh_manager,
-            logging_manager.get_logger("collector.linux"),
-            username=config.require("bootstrap.monitor_username", str),
+            logging_manager.get_logger("collector.forced_linux"),
+            username=bootstrap_service.settings.monitor_username,
+            timeout_seconds=bootstrap_service.settings.verification_timeout_seconds,
+            max_output_bytes=bootstrap_service.settings.maximum_collector_output_bytes,
         )
         polling_service = PollingService(
             inventory_service,

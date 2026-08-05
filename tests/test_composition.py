@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -56,6 +57,16 @@ class FakeNode:
         self.kwargs = kwargs
 
 
+class FakeBootstrapService(FakeInitializable):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.settings = SimpleNamespace(
+            monitor_username="monitor",
+            verification_timeout_seconds=30.0,
+            maximum_collector_output_bytes=262_144,
+        )
+
+
 def test_composition_builds_one_immutable_reusable_service_graph(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -70,8 +81,8 @@ def test_composition_builds_one_immutable_reusable_service_graph(
     monkeypatch.setattr(composition, "InventoryService", FakeNode)
     monkeypatch.setattr(composition, "DiscoveryService", FakeNode)
     monkeypatch.setattr(composition, "SSHManager", FakeInitializable)
-    monkeypatch.setattr(composition, "BootstrapService", FakeInitializable)
-    monkeypatch.setattr(composition, "LinuxCollector", FakeNode)
+    monkeypatch.setattr(composition, "BootstrapService", FakeBootstrapService)
+    monkeypatch.setattr(composition, "ForcedCommandLinuxCollector", FakeNode)
     monkeypatch.setattr(composition, "PollingService", FakeNode)
 
     services = composition.build_application_services(application_root=tmp_path)

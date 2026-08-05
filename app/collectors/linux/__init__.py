@@ -8,6 +8,7 @@ from .exceptions import (
     LinuxCommandError,
     LinuxParserError,
 )
+from .forced_command import ForcedCommandLinuxCollector
 from .models import CollectionIssue, CollectionIssueKind, LinuxFacts
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "SUPPORTED_DISTRIBUTIONS",
     "CollectionIssue",
     "CollectionIssueKind",
+    "ForcedCommandLinuxCollector",
     "LinuxCollector",
     "LinuxCollectorError",
     "LinuxCollectorValidationError",
