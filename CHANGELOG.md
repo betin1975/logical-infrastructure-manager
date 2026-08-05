@@ -69,6 +69,10 @@ after its first release.
 - Bootstrap configuration, typed results and failures, public-key/artifact local
   initialization, Docker public-key mount, InventoryService success recording,
   and comprehensive mocked and executable regression tests.
+- Minimal dependency-injected argparse CLI for server add/list/show, explicit SSH
+  trust inspection/addition, bootstrap, and single-server polling.
+- Frozen reusable application composition shared by startup and the CLI, plus
+  narrow read-only InventoryService list, hostname, UUID, and reference queries.
 - Default and example local configuration files.
 - Unit tests and reproducible development-tool requirements.
 - Python, pytest, coverage, and Ruff project policy.

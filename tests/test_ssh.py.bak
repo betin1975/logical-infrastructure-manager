@@ -639,31 +639,67 @@ def test_manager_rejects_operations_before_initialization(tmp_path: Path) -> Non
 
 
 def test_startup_reports_sanitized_ssh_initialization_failure(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeCompositionError(Exception):
-        def __init__(self, stage: str) -> None:
-            super().__init__("private key contents: synthetic-secret")
-            self.stage = stage
+    events: list[str] = []
 
-    def failing_composition() -> object:
-        raise FakeCompositionError("SSH initialization")
+    class Runtime:
+        def __init__(self, config: object, *, application_root: Path) -> None:
+            pass
 
-    monkeypatch.setattr(app_main, "CompositionError", FakeCompositionError)
-    monkeypatch.setattr(
-        app_main,
-        "build_application_services",
-        failing_composition,
-    )
+        def initialize(self) -> None:
+            pass
+
+    class Logger:
+        def info(self, message: str, *args: object) -> None:
+            pass
+
+        def exception(self, message: str) -> None:
+            events.append(message)
+
+    class Logging:
+        def __init__(self, config: object, runtime: object) -> None:
+            pass
+
+        def initialize(self) -> None:
+            pass
+
+        def get_logger(self, component: str, **context: object) -> Logger:
+            return Logger()
+
+    class Database:
+        def __init__(self, config: object, runtime: object) -> None:
+            pass
+
+        def initialize(self) -> None:
+            pass
+
+    class MigrationState:
+        schema_version = 3
+
+    class Migration:
+        def __init__(self, database: object) -> None:
+            pass
+
+        def apply_pending(self) -> MigrationState:
+            return MigrationState()
+
+    class FailingSSH:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def initialize(self) -> None:
+            raise SSHIdentityError("private key contents: synthetic-secret")
+
+    monkeypatch.setattr(app_main, "ConfigManager", object)
+    monkeypatch.setattr(app_main, "RuntimeManager", Runtime)
+    monkeypatch.setattr(app_main, "LoggingManager", Logging)
+    monkeypatch.setattr(app_main, "DatabaseManager", Database)
+    monkeypatch.setattr(app_main, "MigrationManager", Migration)
+    monkeypatch.setattr(app_main, "SSHManager", FailingSSH)
 
     assert app_main.main() == 1
-
-    captured = capsys.readouterr()
-
-    assert captured.out == ""
-    assert captured.err == "LIM startup failed during SSH initialization\n"
-    assert "synthetic-secret" not in captured.err
+    assert events == ["LIM SSH foundation initialization failed"]
 
 
 def test_process_runner_uses_no_shell_and_bounds_both_streams(tmp_path: Path) -> None:

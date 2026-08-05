@@ -14,6 +14,7 @@ from .models import (
     Label,
     OperatingSystem,
     Platform,
+    RepositoryResult,
     Server,
     ServerStatus,
     ServerType,
@@ -21,7 +22,12 @@ from .models import (
     Tag,
 )
 from .repository import InventoryRepository
-from .validation import normalize_label_key, normalize_tag_name, normalize_uuid
+from .validation import (
+    normalize_hostname,
+    normalize_label_key,
+    normalize_tag_name,
+    normalize_uuid,
+)
 
 
 class InventoryLogger(Protocol):
@@ -149,6 +155,44 @@ class InventoryService:
     def get_server(self, server_uuid: UUID | str) -> Server:
         """Return one active inventory server through the service boundary."""
         return self._get(server_uuid)
+
+    def find_server_by_id(self, server_uuid: UUID | str) -> Server:
+        """Return one active server by stable inventory UUID."""
+        return self._get(server_uuid)
+
+    def find_server_by_hostname(self, hostname: str) -> Server:
+        """Return one active server by normalized hostname."""
+        server = self._repository.find_by_hostname(normalize_hostname(hostname))
+        if server is None:
+            raise ServerNotFoundError("inventory server was not found")
+        return server
+
+    def resolve_server(self, name_or_uuid: str | UUID) -> Server:
+        """Resolve one active server, preferring UUID for UUID-shaped input."""
+        if isinstance(name_or_uuid, UUID):
+            return self.find_server_by_id(name_or_uuid)
+        if not isinstance(name_or_uuid, str) or not name_or_uuid.strip():
+            raise InventoryValidationError("server reference is invalid")
+        reference = name_or_uuid.strip()
+        try:
+            identifier = UUID(reference)
+        except ValueError:
+            return self.find_server_by_hostname(reference)
+        return self.find_server_by_id(identifier)
+
+    def list_servers(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        include_deleted: bool = False,
+    ) -> RepositoryResult[Server]:
+        """Return one stable inventory page through the service boundary."""
+        return self._repository.list_all(
+            limit=limit,
+            offset=offset,
+            include_deleted=include_deleted,
+        )
 
     def record_bootstrap_success(self, server_uuid: UUID | str) -> Server:
         """Record one fully verified bootstrap completion."""

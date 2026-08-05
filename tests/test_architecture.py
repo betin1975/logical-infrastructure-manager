@@ -20,6 +20,7 @@ def test_sqlite_access_is_confined_to_persistence_and_composition() -> None:
     composition_roots = {
         application_root / "__main__.py",
         application_root / "bootstrap.py",
+        application_root / "composition.py",
     }
     low_level_managers = {
         "BackupManager",

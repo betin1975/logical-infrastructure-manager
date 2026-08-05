@@ -3,7 +3,7 @@
 import sys
 
 from .composition import CompositionError, build_application_services
-
+from app.config import ConfigManagerj
 
 def main() -> int:
     """Initialize the composed LIM foundation services without remote actions."""
