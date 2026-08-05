@@ -73,6 +73,9 @@ def test_ssh_process_ownership_and_domain_isolation() -> None:
     application_root = project_root / "app"
     ssh_root = application_root / "ssh"
     command_module = ssh_root / "command.py"
+    remote_bootstrap_artifact = (
+        application_root / "bootstrap/artifacts/remote_health.py"
+    )
     violations: list[str] = []
     ssh_tools = {"ssh", "scp", "sftp", "ssh-keyscan", "ssh-keygen"}
 
@@ -86,7 +89,10 @@ def test_ssh_process_ownership_and_domain_isolation() -> None:
             and node.module == "subprocess"
             for node in ast.walk(tree)
         )
-        if imports_subprocess and path != command_module:
+        if imports_subprocess and path not in {
+            command_module,
+            remote_bootstrap_artifact,
+        }:
             violations.append(f"{relative}: subprocess ownership")
 
         if path.is_relative_to(ssh_root):
@@ -143,6 +149,74 @@ def test_ssh_process_ownership_and_domain_isolation() -> None:
     assert not violations, (
         "OpenSSH subprocesses belong only to app.ssh.command; SSH cannot import "
         f"persistence or mutate inventory/discovery: {sorted(set(violations))}"
+    )
+
+
+def test_bootstrap_owns_no_ssh_process_persistence_or_discovery_behavior() -> None:
+    """Keep bootstrap orchestration on SSHManager and InventoryService only."""
+    project_root = Path(__file__).resolve().parent.parent
+    bootstrap_root = project_root / "app/bootstrap"
+    artifact_root = bootstrap_root / "artifacts"
+    forbidden_modules = {
+        "sqlite3",
+        "subprocess",
+        "app.persistence",
+        "app.discovery",
+        "app.collectors",
+        "app.inventory.repository",
+    }
+    forbidden_names = {
+        "DatabaseManager",
+        "DiscoveryObservation",
+        "DiscoveryRepository",
+        "DiscoveryService",
+        "InventoryRepository",
+        "LinuxCollector",
+        "SQLiteInventoryRepository",
+        "TransactionManager",
+    }
+    violations: list[str] = []
+
+    for path in bootstrap_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        relative = str(path.relative_to(project_root))
+        for node in ast.walk(tree):
+            if path.is_relative_to(artifact_root):
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    names = (
+                        [alias.name for alias in node.names]
+                        if isinstance(node, ast.Import)
+                        else [node.module or ""]
+                    )
+                    if any(name == "app" or name.startswith("app.") for name in names):
+                        violations.append(f"{relative}: artifact LIM import")
+                continue
+            if isinstance(node, ast.Import) and any(
+                alias.name in forbidden_modules
+                or any(
+                    alias.name.startswith(f"{module}.") for module in forbidden_modules
+                )
+                for alias in node.names
+            ):
+                violations.append(relative)
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (
+                    node.module in forbidden_modules
+                    or any(
+                        node.module.startswith(f"{module}.")
+                        for module in forbidden_modules
+                    )
+                    or any(alias.name in forbidden_names for alias in node.names)
+                )
+            ):
+                violations.append(relative)
+
+    assert not violations, (
+        "BootstrapService must use SSHManager and InventoryService only; it cannot "
+        "own subprocess, persistence, discovery, or LinuxCollector behavior: "
+        f"{sorted(set(violations))}"
     )
 
 

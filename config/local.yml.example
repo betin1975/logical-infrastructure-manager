@@ -21,3 +21,9 @@ database:
 # ssh:
 #   admin_private_key: /run/secrets/lim_admin_ed25519
 #   monitor_private_key: /run/secrets/monitor_ed25519
+
+# bootstrap:
+#   # Public key only; private identities remain under the ssh section.
+#   monitor_public_key: /run/secrets/lim_monitor_public_key
+#   monitor_username: monitor
+#   monitor_home: /var/lib/monitor

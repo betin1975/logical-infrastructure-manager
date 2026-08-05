@@ -47,12 +47,34 @@ credential directory and read-only to the LIM process:
 
 ```shell
 chmod 0400 ssh/lim_admin_ed25519 ssh/monitor_ed25519
+chmod 0444 ssh/monitor_ed25519.pub
 ```
 
 The configured `ssh`, `scp`, and `ssh-keyscan` executables must exist and be
 executable. LIM creates `runtime/data/known_hosts` mode `0600`; do not point it at
 an operator's personal trust file. Remote trust is added only through explicit
 fingerprint-confirmed SSHManager operations.
+
+Before a target can be bootstrapped, an operator must install the administrative
+public key through an out-of-band trusted channel. For example, from an operator
+workstation—not from the LIM container—use the target's approved account:
+
+```shell
+ssh-copy-id -i ssh/lim_admin_ed25519.pub admin@example-host
+```
+
+Confirm the presented host-key fingerprint separately, add it through
+SSHManager's explicit trust workflow, and configure passwordless `sudo -n` for
+only the administrative operations bootstrap requires. LIM never prompts for or
+stores an admin password, never uses `ssh-agent` forwarding, and never weakens
+strict host-key checking. The target must be Linux with Python 3.9 or newer.
+
+Bootstrap creates or repairs the configured monitor account and deploys only
+`ssh/monitor_ed25519.pub` plus the standalone collector. It never copies either
+private key. The account password is locked, configured privileged memberships
+are removed, and LIM's authorized-key entry is forced to the collector command.
+Unrelated authorized keys are left intact. Collection and bootstrap are explicit
+application operations; startup performs local validation and no network access.
 
 Database and backup files use mode `0600`. Back up through the Python
 `BackupManager` API so WAL state is copied consistently; never copy a live SQLite
@@ -85,14 +107,14 @@ docker compose run --rm lim
 ```
 
 The bind-mounted `runtime/` directory must be writable by container UID/GID
-`10001` on Linux hosts. The two key files must be owned by or otherwise readable
-only by UID `10001` and have mode `0400`; Compose mounts each file individually
-and read-only. It does not mount the SSH directory writable. Do not add SSH
-credentials to an image.
+`10001` on Linux hosts. The two private-key files must be owned by or otherwise
+readable only by UID `10001` and have mode `0400`; the monitor public key may use
+mode `0444`. Compose mounts all three files individually and read-only. It does
+not mount the SSH directory writable. Do not add SSH credentials to an image.
 
 ## Production status
 
-There is no supported production deployment until inventory migrations,
-`SSHManager`, the job engine, a long-running application entry point, health
+There is no supported production deployment until the job engine, a long-running
+application entry point, health
 checks, backup retention and destructive restore procedures, and
 authentication/authorization requirements are implemented and reviewed.

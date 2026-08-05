@@ -8,6 +8,20 @@ and normalized discovery history. SSHManager adds configuration and mounted-file
 requirements but no database table. Job, plugin, user, alert, and audit tables do
 not exist.
 
+Bootstrap adds no database migration. It adds required `bootstrap` configuration,
+a read-only monitor public-key input, and a versioned standalone collector
+artifact. Existing development containers must mount
+`ssh/monitor_ed25519.pub` read-only in addition to the two private identities.
+Targets must provide Python 3.9 or newer, pre-established admin public-key access,
+confirmed LIM host trust, and non-interactive sudo before an explicit bootstrap
+request. Startup validates these local inputs but never changes a target.
+
+Re-running bootstrap upgrades or repairs only the LIM-marked authorized-key line
+and collector artifact after validating existing account ownership. It preserves
+unrelated key lines and records the inventory bootstrap timestamp only after full
+post-verification. Review collector schema/version changes before upgrading; a
+cross-version compatibility window is not yet guaranteed.
+
 Existing development deployments must add the complete `ssh` configuration,
 provide separate read-only admin and monitor identities, and move application
 host trust to the configured runtime-data `known_hosts`. A historical writable

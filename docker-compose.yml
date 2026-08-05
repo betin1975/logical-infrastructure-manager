@@ -21,6 +21,10 @@ services:
         source: ./ssh/monitor_ed25519
         target: /opt/lim/ssh/monitor_ed25519
         read_only: true
+      - type: bind
+        source: ./ssh/monitor_ed25519.pub
+        target: /opt/lim/ssh/monitor_ed25519.pub
+        read_only: true
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
