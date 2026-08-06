@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Collector Upgrades · LIM{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('servers') }}">← All servers</a>
+<h1>Collector upgrades</h1>
+<p class="muted">
+  Upgrade all bootstrapped, enabled, managed servers through the restricted
+  monitor channel.
+</p>
+
+<form method="post" class="card wide">
+  <label>
+    Target version
+    <input name="version" value="{{ configured_version }}" required>
+  </label>
+  <label>
+    Concurrency
+    <input name="concurrency" type="number" min="1" max="32" value="10">
+  </label>
+  <label class="checkbox">
+    <input name="dry_run" type="checkbox" value="1" checked>
+    Dry run only
+  </label>
+  <button class="button" type="submit">Run bulk upgrade</button>
+</form>
+
+{% if results %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Server</th>
+      <th>Address</th>
+      <th>Status</th>
+      <th>Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for result in results %}
+    <tr>
+      <td>{{ result.hostname }}</td>
+      <td>{{ result.address }}</td>
+      <td><span class="badge {{ result.status.value }}">{{ result.status.value }}</span></td>
+      <td>{{ result.message }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}
