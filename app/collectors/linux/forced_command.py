@@ -45,6 +45,11 @@ _SERVICE_NAMES = (
     "prometheus",
     "asterisk",
     "freepbx",
+    "rsyslog",
+    "syslog-ng",
+    "systemd-journald",
+    "node_exporter",
+    "time-sync",
 )
 
 

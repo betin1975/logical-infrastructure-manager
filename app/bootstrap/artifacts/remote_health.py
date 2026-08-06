@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 SCHEMA_VERSION = 1
-COLLECTOR_VERSION = "1.0.0"
+COLLECTOR_VERSION = "1.1.0"
 COMMAND_TIMEOUT_SECONDS = 5
 MAX_COMMAND_BYTES = 65_536
 MAX_DOCUMENT_BYTES = 262_144
@@ -119,9 +119,14 @@ def collect(runner: Runner = run_command) -> dict[str, object]:
             "redis",
             "prometheus",
             "asterisk",
+            "rsyslog",
+            "syslog-ng",
+            "systemd-journald",
+            "node_exporter",
         )
     }
     services["freepbx"] = _freepbx(runner)
+    services["time-sync"] = _time_sync(runner)
     return {
         "schema_version": SCHEMA_VERSION,
         "collector_version": COLLECTOR_VERSION,
@@ -260,6 +265,21 @@ def _systemd_service(name: str, runner: Runner) -> dict[str, str]:
         else "unknown"
     )
     return {"installation": "installed", "activity": activity}
+
+
+def _time_sync(runner: Runner) -> dict[str, str]:
+    """Return explicit local NTP synchronization evidence."""
+    result = runner(
+        ("timedatectl", "show", "--property=NTPSynchronized", "--value")
+    )
+    if result.exit_code == 127:
+        return {"installation": "unknown", "activity": "unknown"}
+    value = (_first(result) or "").strip().lower()
+    if value in {"yes", "true", "1"}:
+        return {"installation": "installed", "activity": "active"}
+    if value in {"no", "false", "0"}:
+        return {"installation": "installed", "activity": "inactive"}
+    return {"installation": "unknown", "activity": "unknown"}
 
 
 def _freepbx(runner: Runner) -> dict[str, str]:

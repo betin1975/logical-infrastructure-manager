@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 
 def build_system_checks(observation: object | None) -> tuple[dict[str, str], ...]:
@@ -19,13 +20,18 @@ def build_system_checks(observation: object | None) -> tuple[dict[str, str], ...
             services,
             ("systemd-journald", "journald"),
         ),
+        _service_check(
+            "Node exporter",
+            services,
+            ("node_exporter", "node-exporter"),
+        ),
+        _service_check(
+            "Time synchronization",
+            services,
+            ("time-sync",),
+        ),
         _memory_check(getattr(observation, "memory", None)),
         _root_disk_check(getattr(observation, "disks", ())),
-        {
-            "name": "Time synchronization",
-            "status": "unknown",
-            "detail": "Not collected by the current remote artifact.",
-        },
     )
 
 
@@ -74,7 +80,12 @@ def _service_check(
             "status": "healthy",
             "detail": "Installed and active.",
         }
-    if installation in {"not_installed", "not-installed", "absent"}:
+    if installation in {"not_installed", "not-installed", "absent"} or activity in {
+        "not_installed",
+        "not-installed",
+        "absent",
+        "not_applicable",
+    }:
         return {
             "name": label,
             "status": "not-installed",

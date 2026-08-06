@@ -16,13 +16,19 @@ class FixtureRunner:
     def __init__(self, *, distribution: str = "ubuntu") -> None:
         self.distribution = distribution
         self.services = {
-            "docker": ("installed", "active"),
-            "mysql": ("not_installed", "not_applicable"),
-            "mariadb": ("installed", "inactive"),
-            "redis": ("installed", "active"),
-            "prometheus": ("not_installed", "not_applicable"),
-            "asterisk": ("installed", "inactive"),
-        }
+	    "docker": ("installed", "active"),
+	    "mysql": ("not_installed", "not_applicable"),
+	    "mariadb": ("installed", "inactive"),
+	    "redis": ("installed", "active"),
+	    "prometheus": ("installed", "active"),
+	    "asterisk": ("not_installed", "not_installed"),
+
+	    "rsyslog": ("installed", "active"),
+	    "syslog-ng": ("not_installed", "not_installed"),
+	    "systemd-journald": ("installed", "active"),
+	    "node_exporter": ("not_installed", "not_installed"),
+}
+
         self.systemd_absent = False
         self.freepbx = "not_installed"
 
@@ -60,6 +66,14 @@ class FixtureRunner:
                 '[{"ifname":"eth0","flags":["UP"],"addr_info":'
                 '[{"local":"192.0.2.10"}],"credential":"never"}]'
             )
+        if command == (
+            "timedatectl",
+            "show",
+            "--property=NTPSynchronized",
+            "--value",
+        ):
+            return self._ok("yes\\n")
+
         if command[0] == "systemctl" and command[1] == "list-unit-files":
             if self.systemd_absent:
                 return remote_health.CommandResult(127, "", "not_installed")
