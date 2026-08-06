@@ -100,12 +100,21 @@ def create_dashboard(
                 concurrency = 10
             concurrency = max(1, min(concurrency, 32))
             dry_run = request.form.get("dry_run") == "1"
+            selected_values = request.form.getlist("server_uuid")
+            selected_server_uuids = None
+            if selected_values:
+                try:
+                    selected_server_uuids = {
+                        UUID(value) for value in selected_values
+                    }
+                except ValueError:
+                    error = "One or more selected server IDs are invalid."
 
             if version != configured_version:
                 error = (
                     "Target version must match the configured collector version."
                 )
-            else:
+            elif error is None:
                 try:
                     results = (
                         state.services.collector_upgrade_service.upgrade_all(
@@ -113,6 +122,7 @@ def create_dashboard(
                             concurrency=concurrency,
                             dry_run=dry_run,
                             artifact_base_url=request.url_root,
+                            server_uuids=selected_server_uuids,
                         )
                     )
                 except Exception:

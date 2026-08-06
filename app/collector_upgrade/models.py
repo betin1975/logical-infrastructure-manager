@@ -9,6 +9,7 @@ from uuid import UUID
 
 class CollectorUpgradeStatus(StrEnum):
     PENDING = "pending"
+    ALREADY_CURRENT = "already_current"
     SKIPPED = "skipped"
     SUCCEEDED = "succeeded"
     FAILED = "failed"

@@ -1,59 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Collector Upgrades · LIM{% endblock %}
+{% block title %}Collector Releases - LIM{% endblock %}
 {% block content %}
 <a class="back" href="{{ url_for('servers') }}">← All servers</a>
-<h1>Collector upgrades</h1>
-<p class="muted">
-  Upgrade all bootstrapped, enabled, managed servers through the restricted
-  monitor channel.
-</p>
-
-{% if error %}
-<div class="notice error">{{ error }}</div>
-{% endif %}
-
+<h1>Collector release {{ configured_version }}</h1>
+<p class="muted">Detect versions, skip current hosts, upgrade outdated collectors, verify, poll, and retry failures.</p>
+{% if error %}<div class="notice error">{{ error }}</div>{% endif %}
 <form method="post" class="card wide onboarding-form">
-  <label>
-    Target version
-    <input name="version" value="{{ configured_version }}" required>
-  </label>
-  <label>
-    Concurrency
-    <input name="concurrency" type="number" min="1" max="32" value="10">
-  </label>
-  <label class="checkbox">
-    <input name="dry_run" type="checkbox" value="1" checked>
-    Dry run only
-  </label>
-  <button class="button" type="submit">Run bulk upgrade</button>
+  <input name="version" type="hidden" value="{{ configured_version }}">
+  <label>Concurrency<input name="concurrency" type="number" min="1" max="32" value="10"></label>
+  <label class="checkbox"><input name="dry_run" type="checkbox" value="1" checked>Dry run only</label>
+  <button class="button" type="submit">Run release workflow</button>
 </form>
-
 {% if results %}
-<div class="table-wrap">
-<table>
-  <thead>
-    <tr>
-      <th>Server</th>
-      <th>Address</th>
-      <th>Status</th>
-      <th>Result</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for result in results %}
-    <tr>
-      <td>{{ result.hostname }}</td>
-      <td>{{ result.address }}</td>
-      <td>
-        <span class="badge {{ result.status.value }}">
-          {{ result.status.value }}
-        </span>
-      </td>
-      <td>{{ result.message }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
-{% endif %}
+{% set failed = results | selectattr("status.value", "equalto", "failed") | list %}
+{% set succeeded = results | selectattr("status.value", "equalto", "succeeded") | list %}
+{% set current = results | selectattr("status.value", "equalto", "already_current") | list %}
+<section class="card wide"><h2>Release summary</h2><div class="check-grid">
+<article class="system-check"><strong>Targeted</strong><p>{{ results | length }}</p></article>
+<article class="system-check"><strong>Upgraded</strong><p>{{ succeeded | length }}</p></article>
+<article class="system-check"><strong>Already current</strong><p>{{ current | length }}</p></article>
+<article class="system-check"><strong>Failed</strong><p>{{ failed | length }}</p></article>
+</div></section>
+{% if failed %}<form method="post" class="card wide">
+<input name="version" type="hidden" value="{{ configured_version }}"><input name="concurrency" type="hidden" value="5">
+{% for result in failed %}<input name="server_uuid" type="hidden" value="{{ result.server_uuid }}">{% endfor %}
+<button class="button" type="submit">Retry failed servers</button></form>{% endif %}
+<div class="table-wrap"><table><thead><tr><th>Server</th><th>Address</th><th>Previous</th><th>Target</th><th>Status</th><th>Result</th></tr></thead><tbody>
+{% for result in results %}<tr><td>{{ result.hostname }}</td><td>{{ result.address }}</td><td>{{ result.previous_version or "unknown" }}</td><td>{{ result.target_version or configured_version }}</td><td><span class="badge {{ result.status.value }}">{{ result.status.value | replace("_", " ") }}</span></td><td>{{ result.message }}</td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
 {% endblock %}

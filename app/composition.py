@@ -139,6 +139,7 @@ def build_application_services(
         collector_upgrade_service = CollectorUpgradeService(
             inventory_service,
             ssh_manager,
+            polling_service,
             monitor_username=bootstrap_service.settings.monitor_username,
             artifact_path=root / "app/bootstrap/artifacts/remote_health.py",
         )

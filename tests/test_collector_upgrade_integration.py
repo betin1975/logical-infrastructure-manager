@@ -8,6 +8,11 @@ from types import SimpleNamespace
 from app.collector_upgrade import CollectorUpgradeService
 
 
+class Polling:
+    def poll(self, server_uuid):
+        raise AssertionError("Polling should not run in this test.")
+
+
 class Inventory:
     def list_servers(self, *, limit: int):
         assert limit == 1000
@@ -23,6 +28,7 @@ def test_release_uses_request_base_url(tmp_path: Path) -> None:
     service = CollectorUpgradeService(
         Inventory(),
         object(),
+        Polling(),
         monitor_username="monitor",
         artifact_path=artifact,
     )

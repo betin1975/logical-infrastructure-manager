@@ -12,6 +12,11 @@ from app.collector_upgrade import (
 )
 
 
+class Polling:
+    def poll(self, server_uuid):
+        raise AssertionError("Polling should not run in this test.")
+
+
 class Inventory:
     def __init__(self, servers):
         self.servers = servers
@@ -47,6 +52,7 @@ def test_dry_run_filters_ineligible_servers(tmp_path: Path) -> None:
     service = CollectorUpgradeService(
         Inventory((eligible, disabled)),
         object(),
+        Polling(),
         monitor_username="monitor",
         artifact_path=artifact,
     )
