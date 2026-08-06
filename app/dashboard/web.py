@@ -25,6 +25,7 @@ from app.composition import (
     build_application_services,
 )
 from app.dashboard.checks import build_system_checks
+from app.dashboard.overview import build_server_overview
 from app.inventory import InventoryError
 
 
@@ -167,11 +168,13 @@ def create_dashboard(
     def server_detail(server_uuid: str):
         server = _find_server_or_404(state, server_uuid)
         latest = state.services.discovery_service.retrieve_latest(server.uuid)
+        system_checks = build_system_checks(latest)
         return render_template(
             "server_detail.html",
             server=server,
             latest=latest,
-            system_checks=build_system_checks(latest),
+            system_checks=system_checks,
+            overview=build_server_overview(server, latest, system_checks),
             notice=request.args.get("notice"),
             error=request.args.get("error"),
         )

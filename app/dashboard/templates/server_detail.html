@@ -52,6 +52,51 @@
   </section>
 </div>
 
+{% if latest %}
+<section class="operations-overview">
+  <article class="ops-card {{ overview.health.status }}">
+    <span class="ops-eyebrow">Server health</span>
+    <div class="ops-primary">{{ overview.health.score }}</div>
+    <strong>{{ overview.health.label }}</strong>
+    <p>{{ overview.health.warnings }} item(s) need review</p>
+  </article>
+  <article class="ops-card {{ overview.storage.status }}">
+    <span class="ops-eyebrow">Storage</span>
+    <div class="ops-primary">{{ overview.storage.used_percent if overview.storage.used_percent is not none else "—" }}%</div>
+    <strong>{{ overview.storage.count }} filesystems</strong>
+    <p>{{ overview.storage.used_bytes | bytesize }} used of {{ overview.storage.total_bytes | bytesize }}</p>
+    {% if overview.storage.highest_mount %}<p class="ops-detail">Highest: {{ overview.storage.highest_mount }} {{ overview.storage.highest_percent }}%</p>{% endif %}
+  </article>
+  <article class="ops-card {{ overview.network.status }}">
+    <span class="ops-eyebrow">Network</span>
+    <div class="ops-primary">{{ overview.network.up }} up</div>
+    <strong>{{ overview.network.interfaces }} interfaces</strong>
+    <p>{{ overview.network.down }} down · {{ overview.network.addresses }} addresses</p>
+    <p class="ops-detail">IPv4 {{ overview.network.ipv4 }} · IPv6 {{ overview.network.ipv6 }}</p>
+  </article>
+  <article class="ops-card {{ overview.services.status }}">
+    <span class="ops-eyebrow">Services</span>
+    <div class="ops-primary">{{ overview.services.active }} active</div>
+    <strong>{{ overview.services.total }} monitored</strong>
+    <p>{{ overview.services.inactive }} inactive · {{ overview.services.unknown }} unknown</p>
+    <div class="ops-mini-list">{% for check in overview.services.highlights %}<span class="ops-mini {{ check.status }}">{{ check.name }}: {{ check.status | replace("-", " ") }}</span>{% endfor %}</div>
+  </article>
+  <article class="ops-card">
+    <span class="ops-eyebrow">Platform</span>
+    <div class="ops-platform">{{ overview.platform.os }}</div>
+    <strong>{{ overview.platform.architecture }}</strong>
+    <p>Kernel {{ overview.platform.kernel }}</p>
+    <p class="ops-detail">Collector {{ overview.platform.collector_version }} · {{ overview.platform.last_poll }}</p>
+  </article>
+</section>
+<section class="resource-overview">
+  <article class="resource-card {{ overview.resources.memory.status }}"><span>Memory</span><strong>{{ overview.resources.memory.used_percent if overview.resources.memory.used_percent is not none else "—" }}%</strong><small>{{ overview.resources.memory.total_bytes | bytesize }} total</small></article>
+  <article class="resource-card {{ overview.resources.root_disk.status }}"><span>Root filesystem</span><strong>{{ overview.resources.root_disk.used_percent if overview.resources.root_disk.used_percent is not none else "—" }}%</strong><small>/</small></article>
+  <article class="resource-card {{ overview.resources.containers.docker_status }}"><span>Containers</span><strong>{{ overview.resources.containers.count }}</strong><small>Docker {{ overview.resources.containers.docker_status }}</small></article>
+  <article class="resource-card {{ overview.resources.collector.status }}"><span>Collector</span><strong>{{ overview.resources.collector.version }}</strong><small>{{ overview.resources.collector.status }}</small></article>
+</section>
+{% endif %}
+
 <section class="card wide">
   <h2>Latest observation</h2>
   {% if latest %}
