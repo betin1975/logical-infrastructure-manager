@@ -4,14 +4,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from flask import Flask, abort, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    abort,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 
-from app.composition import ApplicationServices, CompositionError, build_application_services
-from app.inventory import InventoryError
+from app.composition import (
+    ApplicationServices,
+    CompositionError,
+    build_application_services,
+)
 from app.dashboard.checks import build_system_checks
+from app.inventory import InventoryError
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +43,9 @@ def create_dashboard(
     try:
         state = DashboardState(services or build_application_services())
     except CompositionError as exc:
-        raise RuntimeError(f"dashboard initialization failed during {exc.stage}") from None
+        raise RuntimeError(
+            f"dashboard initialization failed during {exc.stage}"
+        ) from None
 
     app.config["LIM_DASHBOARD_STATE"] = state
     app.jinja_env.filters["datetime_utc"] = _format_datetime
@@ -66,6 +82,75 @@ def create_dashboard(
             server_ip=request.args.get("server_ip", ""),
             admin_user=request.args.get("admin_user", "deployer"),
             fingerprint=request.args.get("fingerprint", ""),
+        )
+
+    @app.route("/collector-upgrades", methods=["GET", "POST"])
+    def collector_upgrades():
+        configured_version = (
+            state.services.bootstrap_service.settings.collector_version
+        )
+        results = ()
+        error = None
+
+        if request.method == "POST":
+            version = request.form.get("version", "").strip()
+            try:
+                concurrency = int(request.form.get("concurrency", "10"))
+            except ValueError:
+                concurrency = 10
+            concurrency = max(1, min(concurrency, 32))
+            dry_run = request.form.get("dry_run") == "1"
+
+            if version != configured_version:
+                error = (
+                    "Target version must match the configured collector version."
+                )
+            else:
+                try:
+                    results = (
+                        state.services.collector_upgrade_service.upgrade_all(
+                            version=version,
+                            concurrency=concurrency,
+                            dry_run=dry_run,
+                            artifact_base_url=request.url_root,
+                        )
+                    )
+                except Exception:
+                    app.logger.exception("Bulk collector upgrade failed")
+                    error = "Bulk collector upgrade failed. Check LIM logs."
+
+        return render_template(
+            "collector_upgrades.html",
+            configured_version=configured_version,
+            results=results,
+            error=error,
+        )
+
+    @app.get("/internal/collector")
+    def collector_artifact():
+        artifact = (
+            Path(app.root_path).parent
+            / "bootstrap/artifacts/remote_health.py"
+        )
+        payload = artifact.read_bytes()
+        configured_version = (
+            state.services.bootstrap_service.settings.collector_version
+        )
+        expected_sha = sha256(payload).hexdigest()
+
+        if request.args.get("version") != configured_version:
+            abort(404)
+        if request.args.get("sha256") != expected_sha:
+            abort(404)
+
+        return send_file(
+            artifact,
+            mimetype="text/x-python",
+            as_attachment=True,
+            download_name="remote-health-json",
+            conditional=False,
+            etag=expected_sha,
+            max_age=0,
         )
 
     @app.get("/servers/<server_uuid>")
@@ -127,7 +212,14 @@ def create_dashboard(
 
     @app.errorhandler(404)
     def not_found(_error: Any):
-        return render_template("error.html", title="Not found", message="Server not found."), 404
+        return (
+            render_template(
+                "error.html",
+                title="Not found",
+                message="Server not found.",
+            ),
+            404,
+        )
 
     @app.errorhandler(500)
     def internal_error(_error: Any):

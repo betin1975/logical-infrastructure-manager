@@ -8,7 +8,11 @@
   monitor channel.
 </p>
 
-<form method="post" class="card wide">
+{% if error %}
+<div class="notice error">{{ error }}</div>
+{% endif %}
+
+<form method="post" class="card wide onboarding-form">
   <label>
     Target version
     <input name="version" value="{{ configured_version }}" required>
@@ -40,7 +44,11 @@
     <tr>
       <td>{{ result.hostname }}</td>
       <td>{{ result.address }}</td>
-      <td><span class="badge {{ result.status.value }}">{{ result.status.value }}</span></td>
+      <td>
+        <span class="badge {{ result.status.value }}">
+          {{ result.status.value }}
+        </span>
+      </td>
       <td>{{ result.message }}</td>
     </tr>
     {% endfor %}

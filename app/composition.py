@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .bootstrap import BootstrapConfigurationError, BootstrapService
+from .collector_upgrade import CollectorUpgradeService
 from .collectors.linux import ForcedCommandLinuxCollector, LinuxCollectorError
 from .config import ConfigError, ConfigManager, ConfigurationManager
 from .discovery import DiscoveryError, DiscoveryService
@@ -48,6 +49,7 @@ class ApplicationServices:
     bootstrap_service: BootstrapService
     linux_collector: ForcedCommandLinuxCollector
     polling_service: PollingService
+    collector_upgrade_service: CollectorUpgradeService
 
 
 _COMPOSITION_ERRORS = (
@@ -134,6 +136,12 @@ def build_application_services(
             linux_collector,
             logging_manager.get_logger("polling"),
         )
+        collector_upgrade_service = CollectorUpgradeService(
+            inventory_service,
+            ssh_manager,
+            monitor_username=bootstrap_service.settings.monitor_username,
+            artifact_path=root / "app/bootstrap/artifacts/remote_health.py",
+        )
     except _COMPOSITION_ERRORS as exc:
         raise CompositionError(stage) from exc
 
@@ -149,4 +157,5 @@ def build_application_services(
         bootstrap_service=bootstrap_service,
         linux_collector=linux_collector,
         polling_service=polling_service,
+        collector_upgrade_service=collector_upgrade_service,
     )

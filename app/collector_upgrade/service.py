@@ -46,21 +46,26 @@ class CollectorUpgradeService:
         *,
         monitor_username: str,
         artifact_path: Path,
-        artifact_base_url: str,
     ) -> None:
         self._inventory = inventory
         self._ssh = ssh_manager
         self._monitor_username = monitor_username
         self._artifact_path = artifact_path
-        self._artifact_base_url = artifact_base_url.rstrip("/")
 
-    def release(self, version: str) -> CollectorRelease:
+    def release(
+        self,
+        version: str,
+        *,
+        artifact_base_url: str,
+    ) -> CollectorRelease:
         digest = sha256(self._artifact_path.read_bytes()).hexdigest()
         query = urlencode({"version": version, "sha256": digest})
         return CollectorRelease(
             version=version,
             sha256=digest,
-            artifact_url=f"{self._artifact_base_url}/internal/collector?{query}",
+            artifact_url=(
+                f"{artifact_base_url.rstrip('/')}/internal/collector?{query}"
+            ),
         )
 
     def eligible_servers(self) -> tuple[object, ...]:
@@ -79,8 +84,12 @@ class CollectorUpgradeService:
         version: str,
         concurrency: int = 10,
         dry_run: bool = False,
+        artifact_base_url: str,
     ) -> tuple[CollectorUpgradeResult, ...]:
-        release = self.release(version)
+        release = self.release(
+            version,
+            artifact_base_url=artifact_base_url,
+        )
         servers = self.eligible_servers()
         if dry_run:
             return tuple(

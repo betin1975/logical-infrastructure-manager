@@ -49,13 +49,13 @@ def test_dry_run_filters_ineligible_servers(tmp_path: Path) -> None:
         object(),
         monitor_username="monitor",
         artifact_path=artifact,
-        artifact_base_url="http://lim:8094",
     )
 
     results = service.upgrade_all(
         version="1.1.0",
         concurrency=10,
         dry_run=True,
+        artifact_base_url="http://lim:8094",
     )
 
     assert len(results) == 1
