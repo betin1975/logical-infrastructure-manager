@@ -1,5 +1,30 @@
 {% extends "base.html" %}
-{% block title %}{{ server.display_name }} · LIM{% endblock %}
+{% block title %}{{ server.display_name }} · LIM<section class="card wide">
+  <div class="section-heading">
+    <div>
+      <h2>Log analysis</h2>
+      <p class="muted">Warning and critical journal events from the last 15 minutes.</p>
+    </div>
+    <form method="post" action="{{ url_for('analyze_server_logs', server_uuid=server.uuid) }}">
+      <button class="button" type="submit">Analyze logs</button>
+    </form>
+  </div>
+  {% if log_analysis %}
+  <div class="notice {{ log_analysis.status.value }}">
+    <strong>{{ log_analysis.summary }}</strong>
+    <span>{{ log_analysis.event_count }} event(s) reviewed</span>
+  </div>
+  {% for finding in log_analysis.findings %}
+  <article class="system-check">
+    <strong>{{ finding.severity.value }} · {{ finding.category }}</strong>
+    <p>{{ finding.summary }}</p>
+    <code>{{ finding.evidence }}</code>
+  </article>
+  {% endfor %}
+  {% endif %}
+</section>
+
+{% endblock %}
 {% block content %}
 <a class="back" href="{{ url_for('servers') }}">← All servers</a>
 

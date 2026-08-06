@@ -11,6 +11,7 @@ from .collectors.linux import ForcedCommandLinuxCollector, LinuxCollectorError
 from .config import ConfigError, ConfigManager, ConfigurationManager
 from .discovery import DiscoveryError, DiscoveryService
 from .inventory import InventoryError, InventoryService
+from .log_analysis import LogAnalysisService
 from .logging_manager import LoggingManager, LoggingManagerError
 from .persistence import (
     DatabaseManager,
@@ -50,6 +51,7 @@ class ApplicationServices:
     linux_collector: ForcedCommandLinuxCollector
     polling_service: PollingService
     collector_upgrade_service: CollectorUpgradeService
+    log_analysis_service: LogAnalysisService
 
 
 _COMPOSITION_ERRORS = (
@@ -159,4 +161,9 @@ def build_application_services(
         linux_collector=linux_collector,
         polling_service=polling_service,
         collector_upgrade_service=collector_upgrade_service,
+        log_analysis_service=LogAnalysisService(
+            inventory_service,
+            ssh_manager,
+            monitor_username=bootstrap_service.settings.monitor_username,
+        ),
     )

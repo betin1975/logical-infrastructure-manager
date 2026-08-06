@@ -49,6 +49,7 @@ def create_dashboard(
         ) from None
 
     app.config["LIM_DASHBOARD_STATE"] = state
+    app.config["LIM_LOG_ANALYSIS_CACHE"] = {}
     app.jinja_env.filters["datetime_utc"] = _format_datetime
     app.jinja_env.filters["bytesize"] = _format_bytes
 
@@ -87,9 +88,7 @@ def create_dashboard(
 
     @app.route("/collector-upgrades", methods=["GET", "POST"])
     def collector_upgrades():
-        configured_version = (
-            state.services.bootstrap_service.settings.collector_version
-        )
+        configured_version = state.services.bootstrap_service.settings.collector_version
         results = ()
         error = None
 
@@ -105,26 +104,20 @@ def create_dashboard(
             selected_server_uuids = None
             if selected_values:
                 try:
-                    selected_server_uuids = {
-                        UUID(value) for value in selected_values
-                    }
+                    selected_server_uuids = {UUID(value) for value in selected_values}
                 except ValueError:
                     error = "One or more selected server IDs are invalid."
 
             if version != configured_version:
-                error = (
-                    "Target version must match the configured collector version."
-                )
+                error = "Target version must match the configured collector version."
             elif error is None:
                 try:
-                    results = (
-                        state.services.collector_upgrade_service.upgrade_all(
-                            version=version,
-                            concurrency=concurrency,
-                            dry_run=dry_run,
-                            artifact_base_url=request.url_root,
-                            server_uuids=selected_server_uuids,
-                        )
+                    results = state.services.collector_upgrade_service.upgrade_all(
+                        version=version,
+                        concurrency=concurrency,
+                        dry_run=dry_run,
+                        artifact_base_url=request.url_root,
+                        server_uuids=selected_server_uuids,
                     )
                 except Exception:
                     app.logger.exception("Bulk collector upgrade failed")
@@ -139,14 +132,9 @@ def create_dashboard(
 
     @app.get("/internal/collector")
     def collector_artifact():
-        artifact = (
-            Path(app.root_path).parent
-            / "bootstrap/artifacts/remote_health.py"
-        )
+        artifact = Path(app.root_path).parent / "bootstrap/artifacts/remote_health.py"
         payload = artifact.read_bytes()
-        configured_version = (
-            state.services.bootstrap_service.settings.collector_version
-        )
+        configured_version = state.services.bootstrap_service.settings.collector_version
         expected_sha = sha256(payload).hexdigest()
 
         if request.args.get("version") != configured_version:
@@ -164,6 +152,29 @@ def create_dashboard(
             max_age=0,
         )
 
+    @app.post("/servers/<server_uuid>/analyze-logs")
+    def analyze_server_logs(server_uuid: str):
+        server = _find_server_or_404(state, server_uuid)
+        try:
+            result = state.services.log_analysis_service.analyze(server.uuid)
+        except Exception:
+            app.logger.exception("Server log analysis failed")
+            return redirect(
+                url_for(
+                    "server_detail",
+                    server_uuid=server.uuid,
+                    error="Log analysis failed. Check LIM logs.",
+                )
+            )
+        app.config["LIM_LOG_ANALYSIS_CACHE"][str(server.uuid)] = result
+        return redirect(
+            url_for(
+                "server_detail",
+                server_uuid=server.uuid,
+                notice="Log analysis completed.",
+            )
+        )
+
     @app.get("/servers/<server_uuid>")
     def server_detail(server_uuid: str):
         server = _find_server_or_404(state, server_uuid)
@@ -175,6 +186,7 @@ def create_dashboard(
             latest=latest,
             system_checks=system_checks,
             overview=build_server_overview(server, latest, system_checks),
+            log_analysis=app.config["LIM_LOG_ANALYSIS_CACHE"].get(str(server.uuid)),
             notice=request.args.get("notice"),
             error=request.args.get("error"),
         )
@@ -196,9 +208,7 @@ def create_dashboard(
             )
 
         status = _enum_value(getattr(result, "status", None))
-        observation_state = _enum_value(
-            getattr(result, "observation_state", None)
-        )
+        observation_state = _enum_value(getattr(result, "observation_state", None))
         observation_uuid = getattr(result, "observation_uuid", None)
 
         if status == "succeeded":
