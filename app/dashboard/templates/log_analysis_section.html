@@ -1,0 +1,21 @@
+<section class="card wide">
+  <div class="section-heading">
+    <div>
+      <h2>Log analysis</h2>
+      <p class="muted">Read-only analysis of warning and critical events from the last 15 minutes.</p>
+    </div>
+    <form method="post" action="{{ url_for('analyze_server_logs', server_uuid=server.uuid) }}">
+      <button class="button" type="submit">Analyze logs</button>
+    </form>
+  </div>
+  {% if log_analysis %}
+  <div class="notice {{ log_analysis.status.value }}">
+    <strong>{{ log_analysis.summary }}</strong>
+    <span>{{ log_analysis.event_count }} event(s) reviewed</span>
+  </div>
+  {% if log_analysis.findings %}
+  <div class="table-wrap"><table><thead><tr><th>Severity</th><th>Source</th><th>Category</th><th>Summary</th><th>Evidence</th></tr></thead>
+  <tbody>{% for finding in log_analysis.findings %}<tr><td>{{ finding.severity.value }}</td><td>{{ finding.source }}</td><td>{{ finding.category }}</td><td>{{ finding.summary }}</td><td><code>{{ finding.evidence }}</code></td></tr>{% endfor %}</tbody></table></div>
+  {% endif %}
+  {% endif %}
+</section>
