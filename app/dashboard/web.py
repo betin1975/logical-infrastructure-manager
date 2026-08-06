@@ -11,6 +11,7 @@ from flask import Flask, abort, redirect, render_template, request, url_for
 
 from app.composition import ApplicationServices, CompositionError, build_application_services
 from app.inventory import InventoryError
+from app.dashboard.checks import build_system_checks
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,7 @@ def create_dashboard(
             "server_detail.html",
             server=server,
             latest=latest,
+            system_checks=build_system_checks(latest),
             notice=request.args.get("notice"),
             error=request.args.get("error"),
         )
