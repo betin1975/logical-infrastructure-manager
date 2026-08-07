@@ -24,6 +24,7 @@ from app.composition import (
     CompositionError,
     build_application_services,
 )
+from app.config import ConfigManager
 from app.dashboard.checks import build_system_checks
 from app.dashboard.overview import build_server_overview
 from app.inventory import InventoryError
@@ -116,7 +117,42 @@ def create_dashboard(
                         version=version,
                         concurrency=concurrency,
                         dry_run=dry_run,
-                        artifact_base_url=request.url_root,
+                        artifact_base_url_resolver=(
+                            lambda server: (
+                                ConfigManager().require(
+                                    "dashboard.private_artifact_base_url",
+                                    str,
+                                )
+                                if str(
+                                    server.management_address or server.primary_address
+                                ).startswith(
+                                    (
+                                        "10.",
+                                        "172.16.",
+                                        "172.17.",
+                                        "172.18.",
+                                        "172.19.",
+                                        "172.20.",
+                                        "172.21.",
+                                        "172.22.",
+                                        "172.23.",
+                                        "172.24.",
+                                        "172.25.",
+                                        "172.26.",
+                                        "172.27.",
+                                        "172.28.",
+                                        "172.29.",
+                                        "172.30.",
+                                        "172.31.",
+                                        "192.168.",
+                                    )
+                                )
+                                else ConfigManager().require(
+                                    "dashboard.public_artifact_base_url",
+                                    str,
+                                )
+                            )
+                        ),
                         server_uuids=selected_server_uuids,
                     )
                 except Exception:

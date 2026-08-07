@@ -11,7 +11,7 @@ from .collectors.linux import ForcedCommandLinuxCollector, LinuxCollectorError
 from .config import ConfigError, ConfigManager, ConfigurationManager
 from .discovery import DiscoveryError, DiscoveryService
 from .inventory import InventoryError, InventoryService
-from .log_analysis import LogAnalysisService
+from .log_analysis import LogAnalysisService, LogAnalysisStore
 from .logging_manager import LoggingManager, LoggingManagerError
 from .persistence import (
     DatabaseManager,
@@ -165,5 +165,6 @@ def build_application_services(
             inventory_service,
             ssh_manager,
             monitor_username=bootstrap_service.settings.monitor_username,
+            store=LogAnalysisStore(root / "runtime/data/log_analysis"),
         ),
     )

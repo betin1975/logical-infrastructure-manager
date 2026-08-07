@@ -8,6 +8,7 @@ from uuid import UUID
 
 from .models import LogAnalysisResult, LogSeverity
 from .rules import analyze_events
+from .store import LogAnalysisStore
 
 
 class LogInventory(Protocol):
@@ -27,11 +28,23 @@ class LogAnalysisService:
         *,
         monitor_username: str,
         timeout_seconds: float = 45,
+        store: LogAnalysisStore | None = None,
     ) -> None:
         self._inventory = inventory
         self._ssh = ssh_manager
         self._monitor_username = monitor_username
         self._timeout_seconds = timeout_seconds
+        self._store = store
+
+    def latest(self, server_uuid: UUID):
+        if self._store is None:
+            return None
+        return self._store.latest(server_uuid)
+
+    def history(self, server_uuid: UUID, *, limit: int = 20):
+        if self._store is None:
+            return ()
+        return self._store.history(server_uuid, limit=limit)
 
     def analyze(self, server_uuid: UUID) -> LogAnalysisResult:
         from app.ssh import SSHCommandRequest, SSHIdentity
@@ -66,7 +79,7 @@ class LogAnalysisService:
             if not findings
             else f"{len(findings)} notable finding(s) detected."
         )
-        return LogAnalysisResult(
+        result = LogAnalysisResult(
             server_uuid=server.uuid,
             hostname=server.hostname,
             status=status,
@@ -74,3 +87,6 @@ class LogAnalysisService:
             findings=findings,
             summary=summary,
         )
+        if self._store is not None:
+            self._store.save(result)
+        return result
