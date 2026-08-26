@@ -55,7 +55,9 @@ class HermesCLIRunner:
             )
 
         try:
-            data = json.loads(completed.stdout.strip())
+            output = completed.stdout.strip()
+            decoder = json.JSONDecoder()
+            data, _ = decoder.raw_decode(output)
 
             confidence = float(data["confidence"])
             if not 0 <= confidence <= 1:

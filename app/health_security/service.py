@@ -39,7 +39,7 @@ class HealthSecurityService:
         request = SSHCommandRequest(
             target=target,
             identity=SSHIdentity.MONITOR,
-            command="health-security",
+            command=("health-security",),
             timeout_seconds=self._timeout_seconds,
         )
         result = self._ssh.run(request)
