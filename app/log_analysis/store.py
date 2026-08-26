@@ -31,8 +31,7 @@ class LogAnalysisStore:
         data["server_uuid"] = str(result.server_uuid)
         data["status"] = result.status.value
         data["findings"] = [
-            {**item, "severity": item["severity"].value}
-            for item in data["findings"]
+            {**item, "severity": item["severity"].value} for item in data["findings"]
         ]
 
         history.insert(0, data)
