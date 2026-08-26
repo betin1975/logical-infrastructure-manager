@@ -1,28 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ server.display_name }} · LIM<section class="card wide">
-  <div class="section-heading">
-    <div>
-      <h2>Log analysis</h2>
-      <p class="muted">Warning and critical journal events from the last 15 minutes.</p>
-    </div>
-    <form method="post" action="{{ url_for('analyze_server_logs', server_uuid=server.uuid) }}">
-      <button class="button" type="submit">Analyze logs</button>
-    </form>
-  </div>
-  {% if log_analysis %}
-  <div class="notice {{ log_analysis.status.value }}">
-    <strong>{{ log_analysis.summary }}</strong>
-    <span>{{ log_analysis.event_count }} event(s) reviewed</span>
-  </div>
-  {% for finding in log_analysis.findings %}
-  <article class="system-check">
-    <strong>{{ finding.severity.value }} · {{ finding.category }}</strong>
-    <p>{{ finding.summary }}</p>
-    <code>{{ finding.evidence }}</code>
-  </article>
-  {% endfor %}
-  {% endif %}
-</section>
+{% block title %}{{ server.display_name }} · LIM
 
 {% endblock %}
 {% block content %}
@@ -185,4 +162,50 @@
   {% endif %}
 </section>
 {% endif %}
+{% include "health_security_section.html" %}
+<section class="card wide">
+  <div class="section-heading">
+    <div>
+      <h2>Log analysis</h2>
+      <p class="muted">Warning and critical journal events from the last 15 minutes.</p>
+    </div>
+    <form method="post" action="{{ url_for('analyze_server_logs', server_uuid=server.uuid) }}">
+      <button class="button" type="submit">Analyze logs</button>
+    </form>
+    <form method="post" action="{{ url_for('explain_server_logs', server_uuid=server.uuid) }}">
+      <button class="button" type="submit">Explain with Hermes</button>
+    </form>
+  </div>
+  {% if log_analysis %}
+  <div class="notice {{ log_analysis.status.value }}">
+    <strong>{{ log_analysis.summary }}</strong>
+    <span>{{ log_analysis.event_count }} event(s) reviewed</span>
+  </div>
+  {% for finding in log_analysis.findings %}
+  <article class="system-check">
+    <strong>{{ finding.severity.value }} · {{ finding.category }}</strong>
+    <p>{{ finding.summary }}</p>
+    <code>{{ finding.evidence }}</code>
+  </article>
+  {% endfor %}
+  {% endif %}
+
+  {% if hermes_insight %}
+  <div class="hermes-assessment">
+    <h3>Hermes assessment</h3>
+    <p><strong>Summary:</strong> {{ hermes_insight.summary }}</p>
+    <p><strong>Probable cause:</strong> {{ hermes_insight.probable_cause }}</p>
+    <p><strong>Confidence:</strong> {{ (hermes_insight.confidence * 100) | round | int }}%</p>
+    {% if hermes_insight.recommendations %}
+    <strong>Recommended checks</strong>
+    <ul>
+      {% for item in hermes_insight.recommendations %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
 {% endblock %}

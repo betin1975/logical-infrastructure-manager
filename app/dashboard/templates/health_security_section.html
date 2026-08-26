@@ -1,0 +1,92 @@
+<section class="card">
+  <div class="heading-row">
+    <div>
+      <h2>Health &amp; Security</h2>
+      <p class="muted">
+        Read-only 24-hour system, update, and security assessment.
+      </p>
+    </div>
+    <form method="post"
+          action="{{ url_for('collect_health_security', server_uuid=server.uuid) }}">
+      <button class="button" type="submit">Refresh assessment</button>
+    </form>
+  </div>
+
+  {% if health_security %}
+  <p>
+    <span class="badge large {{ health_security.overall_status }}">
+      {{ health_security.overall_status }}
+    </span>
+  </p>
+
+  <dl>
+    <dt>Updates available</dt>
+    <dd>{{ health_security.available_updates }}</dd>
+
+    <dt>Security updates</dt>
+    <dd>{{ health_security.security_updates }}</dd>
+
+    <dt>Reboot required</dt>
+    <dd>{{ "Yes" if health_security.reboot_required else "No" }}</dd>
+
+    <dt>Failed systemd units</dt>
+    <dd>{{ health_security.failed_units | length }}</dd>
+
+    <dt>Critical log events (24h)</dt>
+    <dd>{{ health_security.critical_logs }}</dd>
+
+    <dt>Error log events (24h)</dt>
+    <dd>{{ health_security.error_logs }}</dd>
+
+    <dt>Security log events (24h)</dt>
+    <dd>{{ health_security.security_logs }}</dd>
+  </dl>
+
+  {% if health_security.failed_units %}
+  <h3>Failed units</h3>
+  <ul>
+    {% for unit in health_security.failed_units %}
+    <li class="mono">{{ unit }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if health_security.security_packages %}
+  <h3>Pending security packages</h3>
+  <ul>
+    {% for package in health_security.security_packages %}
+    <li class="mono">{{ package }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if health_security.findings %}
+  <details>
+    <summary>
+      Concerning log findings ({{ health_security.findings | length }})
+    </summary>
+    <ul>
+      {% for finding in health_security.findings %}
+      <li>
+        <strong>{{ finding.severity }}</strong>
+        · {{ finding.category }}
+        · {{ finding.count }} occurrence(s)
+        {% if finding.unit %}· {{ finding.unit }}{% endif %}
+        <br>
+        <span class="mono">{{ finding.sample }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <p class="muted">
+    Package status uses the server's current APT metadata.
+    LIM does not run apt update or install packages.
+  </p>
+  {% else %}
+  <p class="muted">
+    No Health &amp; Security assessment has been collected yet.
+  </p>
+  {% endif %}
+</section>

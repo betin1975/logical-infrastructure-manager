@@ -188,6 +188,51 @@ def create_dashboard(
             max_age=0,
         )
 
+    @app.post("/servers/<server_uuid>/explain-logs")
+    def explain_server_logs(server_uuid: str):
+        server = _find_server_or_404(state, server_uuid)
+        try:
+            state.services.assisted_log_analysis_service.explain_latest(server.uuid)
+        except Exception:
+            app.logger.exception("Hermes log explanation failed")
+            return redirect(
+                url_for(
+                    "server_detail",
+                    server_uuid=server.uuid,
+                    error="Hermes analysis failed. Check LIM logs.",
+                )
+            )
+        return redirect(
+            url_for(
+                "server_detail",
+                server_uuid=server.uuid,
+                notice="Hermes analysis completed.",
+            )
+        )
+
+    @app.post("/servers/<server_uuid>/health-security")
+    def collect_health_security(server_uuid: str):
+        server = _find_server_or_404(state, server_uuid)
+        try:
+            state.services.health_security_service.collect(server.uuid)
+        except Exception:
+            app.logger.exception("Health/security assessment failed")
+            return redirect(
+                url_for(
+                    "server_detail",
+                    server_uuid=server.uuid,
+                    error=("Health & Security assessment failed. Check LIM logs."),
+                )
+            )
+
+        return redirect(
+            url_for(
+                "server_detail",
+                server_uuid=server.uuid,
+                notice="Health & Security assessment completed.",
+            )
+        )
+
     @app.post("/servers/<server_uuid>/analyze-logs")
     def analyze_server_logs(server_uuid: str):
         server = _find_server_or_404(state, server_uuid)
@@ -223,6 +268,12 @@ def create_dashboard(
             system_checks=system_checks,
             overview=build_server_overview(server, latest, system_checks),
             log_analysis=app.config["LIM_LOG_ANALYSIS_CACHE"].get(str(server.uuid)),
+            hermes_insight=(
+                state.services.assisted_log_analysis_service.latest(server.uuid)
+            ),
+            health_security=(
+                state.services.health_security_service.latest(server.uuid)
+            ),
             notice=request.args.get("notice"),
             error=request.args.get("error"),
         )

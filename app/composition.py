@@ -10,8 +10,19 @@ from .collector_upgrade import CollectorUpgradeService
 from .collectors.linux import ForcedCommandLinuxCollector, LinuxCollectorError
 from .config import ConfigError, ConfigManager, ConfigurationManager
 from .discovery import DiscoveryError, DiscoveryService
+from .health_security import (
+    HealthSecurityService,
+    HealthSecurityStore,
+)
 from .inventory import InventoryError, InventoryService
-from .log_analysis import LogAnalysisService, LogAnalysisStore
+from .log_analysis import (
+    AssistedLogAnalysisService,
+    HermesCLIRunner,
+    HermesCLISettings,
+    HermesInsightStore,
+    LogAnalysisService,
+    LogAnalysisStore,
+)
 from .logging_manager import LoggingManager, LoggingManagerError
 from .persistence import (
     DatabaseManager,
@@ -45,6 +56,7 @@ class ApplicationServices:
     database: DatabaseManager
     migration_state: MigrationState
     inventory_service: InventoryService
+    health_security_service: HealthSecurityService
     discovery_service: DiscoveryService
     ssh_manager: SSHManager
     bootstrap_service: BootstrapService
@@ -52,6 +64,7 @@ class ApplicationServices:
     polling_service: PollingService
     collector_upgrade_service: CollectorUpgradeService
     log_analysis_service: LogAnalysisService
+    assisted_log_analysis_service: AssistedLogAnalysisService
 
 
 _COMPOSITION_ERRORS = (
@@ -148,6 +161,25 @@ def build_application_services(
     except _COMPOSITION_ERRORS as exc:
         raise CompositionError(stage) from exc
 
+    health_security_service = HealthSecurityService(
+        inventory_service,
+        ssh_manager,
+        monitor_username=bootstrap_service.settings.monitor_username,
+        store=HealthSecurityStore(root / "runtime/data/health_security"),
+    )
+
+    log_analysis_service = LogAnalysisService(
+        inventory_service,
+        ssh_manager,
+        monitor_username=bootstrap_service.settings.monitor_username,
+        store=LogAnalysisStore(root / "runtime/data/log_analysis"),
+    )
+    assisted_log_analysis_service = AssistedLogAnalysisService(
+        log_analysis_service,
+        HermesCLIRunner(HermesCLISettings()),
+        HermesInsightStore(root / "runtime/data/log_analysis"),
+    )
+
     return ApplicationServices(
         config=config,
         runtime=runtime,
@@ -155,16 +187,13 @@ def build_application_services(
         database=database,
         migration_state=migration_state,
         inventory_service=inventory_service,
+        health_security_service=health_security_service,
         discovery_service=discovery_service,
         ssh_manager=ssh_manager,
         bootstrap_service=bootstrap_service,
         linux_collector=linux_collector,
         polling_service=polling_service,
         collector_upgrade_service=collector_upgrade_service,
-        log_analysis_service=LogAnalysisService(
-            inventory_service,
-            ssh_manager,
-            monitor_username=bootstrap_service.settings.monitor_username,
-            store=LogAnalysisStore(root / "runtime/data/log_analysis"),
-        ),
+        log_analysis_service=log_analysis_service,
+        assisted_log_analysis_service=assisted_log_analysis_service,
     )
