@@ -1,0 +1,43 @@
+<section class="card wide">
+  <div class="section-heading">
+    <div>
+      <h2>Onboarding &amp; Readiness</h2>
+      <p class="muted">
+        Verifies whether this server has the LIM capabilities required for normal management.
+      </p>
+    </div>
+
+    <span class="status status-{{ readiness.state.value }}">
+      {{ readiness.state.value | replace("_", " ") | upper }}
+    </span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Capability</th>
+        <th>Status</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for check in readiness.checks %}
+      <tr>
+        <td><strong>{{ check.name }}</strong></td>
+        <td>
+          {% if check.state.value == "ready" %}
+            ✓ Ready
+          {% elif check.state.value == "attention" %}
+            ⚠ Attention
+          {% elif check.state.value == "not_ready" %}
+            ✗ Not ready
+          {% else %}
+            ? Not verified
+          {% endif %}
+        </td>
+        <td>{{ check.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>

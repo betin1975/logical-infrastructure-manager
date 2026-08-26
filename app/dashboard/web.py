@@ -261,19 +261,29 @@ def create_dashboard(
         server = _find_server_or_404(state, server_uuid)
         latest = state.services.discovery_service.retrieve_latest(server.uuid)
         system_checks = build_system_checks(latest)
+
+        log_analysis = app.config["LIM_LOG_ANALYSIS_CACHE"].get(str(server.uuid))
+        health_security = state.services.health_security_service.latest(server.uuid)
+
+        readiness = state.services.readiness_service.assess(
+            server=server,
+            latest=latest,
+            log_analysis=log_analysis,
+            health_security=health_security,
+        )
+
         return render_template(
             "server_detail.html",
             server=server,
             latest=latest,
             system_checks=system_checks,
             overview=build_server_overview(server, latest, system_checks),
-            log_analysis=app.config["LIM_LOG_ANALYSIS_CACHE"].get(str(server.uuid)),
+            log_analysis=log_analysis,
             hermes_insight=(
                 state.services.assisted_log_analysis_service.latest(server.uuid)
             ),
-            health_security=(
-                state.services.health_security_service.latest(server.uuid)
-            ),
+            health_security=health_security,
+            readiness=readiness,
             notice=request.args.get("notice"),
             error=request.args.get("error"),
         )

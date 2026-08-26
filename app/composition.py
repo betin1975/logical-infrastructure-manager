@@ -34,6 +34,7 @@ from .persistence import (
     TransactionManager,
 )
 from .polling import PollingError, PollingService
+from .readiness import ReadinessService
 from .runtime import RuntimeManager, RuntimeManagerError
 from .ssh import SSHManager, SSHManagerError
 
@@ -65,6 +66,7 @@ class ApplicationServices:
     collector_upgrade_service: CollectorUpgradeService
     log_analysis_service: LogAnalysisService
     assisted_log_analysis_service: AssistedLogAnalysisService
+    readiness_service: ReadinessService
 
 
 _COMPOSITION_ERRORS = (
@@ -180,6 +182,8 @@ def build_application_services(
         HermesInsightStore(root / "runtime/data/log_analysis"),
     )
 
+    readiness_service = ReadinessService()
+
     return ApplicationServices(
         config=config,
         runtime=runtime,
@@ -196,4 +200,5 @@ def build_application_services(
         collector_upgrade_service=collector_upgrade_service,
         log_analysis_service=log_analysis_service,
         assisted_log_analysis_service=assisted_log_analysis_service,
+        readiness_service=readiness_service,
     )
